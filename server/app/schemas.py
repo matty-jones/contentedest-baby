@@ -1,0 +1,45 @@
+from __future__ import annotations
+from pydantic import BaseModel
+from typing import Optional, Literal, List
+
+
+class PairRequest(BaseModel):
+    pairing_code: str
+    device_id: str
+    name: Optional[str] = None
+
+
+class PairResponse(BaseModel):
+    device_id: str
+    token: str
+
+
+class EventDTO(BaseModel):
+    event_id: str
+    type: Literal["sleep", "feed", "nappy"]
+    payload: Optional[dict] = None
+    start_ts: Optional[int] = None
+    end_ts: Optional[int] = None
+    ts: Optional[int] = None
+    created_ts: int
+    updated_ts: int
+    version: int
+    deleted: bool = False
+    device_id: str
+
+
+class SyncPushResponseItem(BaseModel):
+    event: EventDTO
+    applied: bool
+
+
+class SyncPushResponse(BaseModel):
+    server_clock: int
+    results: List[SyncPushResponseItem]
+
+
+class SyncPullResponse(BaseModel):
+    server_clock: int
+    events: List[EventDTO]
+
+
