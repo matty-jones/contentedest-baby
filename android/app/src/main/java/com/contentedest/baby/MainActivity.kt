@@ -13,6 +13,8 @@ import com.contentedest.baby.net.TokenStorage
 import com.contentedest.baby.sync.SyncWorker
 import com.contentedest.baby.ui.daily.DailyLogScreen
 import com.contentedest.baby.ui.daily.DailyLogViewModel
+import com.contentedest.baby.ui.export.ExportScreen
+import com.contentedest.baby.ui.export.ExportViewModel
 import com.contentedest.baby.ui.pairing.PairingScreen
 import com.contentedest.baby.ui.pairing.PairingViewModel
 import dagger.hilt.android.AndroidEntryPoint
@@ -29,8 +31,23 @@ class MainActivity : ComponentActivity() {
         setContent {
             Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                 val hasToken = remember { mutableStateOf(tokenStorage.getToken() != null) }
+                var showExportScreen by remember { mutableStateOf(false) }
+
                 Column(modifier = Modifier.fillMaxSize()) {
-                    TopAppBar(title = { Text("The Contentedest Baby") })
+                    TopAppBar(
+                        title = { Text("The Contentedest Baby") },
+                        actions = {
+                            if (hasToken.value) {
+                                IconButton(onClick = { showExportScreen = true }) {
+                                    Icon(
+                                        imageVector = androidx.compose.material.icons.Icons.Default.Share,
+                                        contentDescription = "Export"
+                                    )
+                                }
+                            }
+                        }
+                    )
+
                     if (!hasToken.value) {
                         val vm: PairingViewModel = hiltViewModel()
                         PairingScreen(vm)
@@ -45,13 +62,18 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     } else {
-                        val vm: DailyLogViewModel = hiltViewModel()
-                        LaunchedEffect(Unit) { vm.load(LocalDate.now()) }
-                        DailyLogScreen(vm)
-                        // Handle undo snackbar dismissal
-                        LaunchedEffect(vm.showUndoSnackbar.collectAsState().value) {
-                            // This could trigger a SnackbarHostState.showSnackbar() call
-                            // For now, it's handled internally in the screen
+                        if (showExportScreen) {
+                            val exportVm: ExportViewModel = hiltViewModel()
+                            ExportScreen(exportVm) { showExportScreen = false }
+                        } else {
+                            val vm: DailyLogViewModel = hiltViewModel()
+                            LaunchedEffect(Unit) { vm.load(LocalDate.now()) }
+                            DailyLogScreen(vm)
+                            // Handle undo snackbar dismissal
+                            LaunchedEffect(vm.showUndoSnackbar.collectAsState().value) {
+                                // This could trigger a SnackbarHostState.showSnackbar() call
+                                // For now, it's handled internally in the screen
+                            }
                         }
                     }
                 }

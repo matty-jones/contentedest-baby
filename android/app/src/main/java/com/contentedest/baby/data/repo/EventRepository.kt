@@ -4,6 +4,10 @@ import com.contentedest.baby.data.local.*
 import com.contentedest.baby.net.EventDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.StringWriter
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 class EventRepository(
@@ -149,6 +153,47 @@ class EventRepository(
             solids_amount = solidsAmount,
             nappy_type = nappyType
         )
+    }
+
+    // Export functionality
+    suspend fun exportToCsv(): String = withContext(Dispatchers.IO) {
+        val allEvents = eventsDao.eventsInRange(0L, Long.MAX_VALUE)
+        val writer = StringWriter()
+
+        // CSV Header
+        writer.append("event_id,type,start_ts,end_ts,ts,created_ts,updated_ts,version,deleted,device_id,note,feed_mode,bottle_amount_ml,solids_amount,nappy_type\n")
+
+        // CSV Rows
+        for (event in allEvents) {
+            writer.append("${event.event_id},${event.type.name},${event.start_ts ?: ""},${event.end_ts ?: ""},${event.ts ?: ""},${event.created_ts},${event.updated_ts},${event.version},${event.deleted},${event.device_id},${event.note ?: ""},${event.feed_mode?.name ?: ""},${event.bottle_amount_ml ?: ""},${event.solids_amount ?: ""},${event.nappy_type ?: ""}\n")
+        }
+
+        writer.toString()
+    }
+
+    suspend fun exportToJson(): String = withContext(Dispatchers.IO) {
+        val allEvents = eventsDao.eventsInRange(0L, Long.MAX_VALUE)
+        val eventsForJson = allEvents.map { event ->
+            mapOf(
+                "event_id" to event.event_id,
+                "type" to event.type.name,
+                "start_ts" to event.start_ts,
+                "end_ts" to event.end_ts,
+                "ts" to event.ts,
+                "created_ts" to event.created_ts,
+                "updated_ts" to event.updated_ts,
+                "version" to event.version,
+                "deleted" to event.deleted,
+                "device_id" to event.device_id,
+                "note" to event.note,
+                "feed_mode" to event.feed_mode?.name,
+                "bottle_amount_ml" to event.bottle_amount_ml,
+                "solids_amount" to event.solids_amount,
+                "nappy_type" to event.nappy_type
+            )
+        }
+
+        kotlinx.serialization.json.Json.encodeToString(mapOf("events" to eventsForJson))
     }
 }
 
