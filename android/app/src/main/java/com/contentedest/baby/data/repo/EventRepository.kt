@@ -1,11 +1,15 @@
 package com.contentedest.baby.data.repo
 
 import com.contentedest.baby.data.local.*
+import com.contentedest.baby.net.EventDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
-class EventRepository(private val eventsDao: EventsDao) {
+class EventRepository(
+    private val eventsDao: EventsDao,
+    private val syncStateDao: SyncStateDao
+) {
     suspend fun startSleep(nowUtc: Long, deviceId: String, note: String? = null): String = withContext(Dispatchers.IO) {
         val id = UUID.randomUUID().toString()
         val event = EventEntity(
@@ -80,6 +84,71 @@ class EventRepository(private val eventsDao: EventsDao) {
 
     suspend fun eventsForDay(dayStartUtc: Long, dayEndUtc: Long): List<EventEntity> = withContext(Dispatchers.IO) {
         eventsDao.eventsInRange(dayStartUtc, dayEndUtc)
+    }
+
+    // Sync functionality
+    suspend fun getLastServerClock(): Long = withContext(Dispatchers.IO) {
+        syncStateDao.get()?.last_server_clock ?: 0L
+    }
+
+    suspend fun updateServerClock(clock: Long) = withContext(Dispatchers.IO) {
+        syncStateDao.updateClock(clock)
+    }
+
+    suspend fun ensureSyncState(deviceId: String) = withContext(Dispatchers.IO) {
+        val state = syncStateDao.get()
+        if (state == null) {
+            syncStateDao.upsert(SyncStateEntity(device_id = deviceId, paired = true))
+        } else if (state.device_id != deviceId) {
+            syncStateDao.upsert(state.copy(device_id = deviceId, paired = true))
+        }
+    }
+
+    // Convert EventEntity to EventDto for API
+    private fun EventEntity.toDto(): EventDto {
+        return EventDto(
+            event_id = event_id,
+            type = type.name,
+            payload = when (type) {
+                EventType.feed -> mapOf("mode" to feed_mode?.name, "bottle_amount_ml" to bottle_amount_ml, "solids_amount" to solids_amount)
+                EventType.nappy -> mapOf("nappy_type" to nappy_type)
+                else -> null
+            },
+            start_ts = start_ts,
+            end_ts = end_ts,
+            ts = ts,
+            created_ts = created_ts,
+            updated_ts = updated_ts,
+            version = version,
+            deleted = deleted,
+            device_id = device_id
+        )
+    }
+
+    // Convert EventDto to EventEntity for local storage
+    private fun EventDto.toEntity(): EventEntity {
+        val feedMode = payload?.get("mode")?.toString()?.let { FeedMode.valueOf(it) }
+        val bottleAmount = payload?.get("bottle_amount_ml") as? Int
+        val solidsAmount = payload?.get("solids_amount") as? Int
+        val nappyType = payload?.get("nappy_type")?.toString()
+
+        return EventEntity(
+            event_id = event_id,
+            type = EventType.valueOf(type),
+            payload = payload,
+            start_ts = start_ts,
+            end_ts = end_ts,
+            ts = ts,
+            created_ts = created_ts,
+            updated_ts = updated_ts,
+            version = version,
+            deleted = deleted,
+            device_id = device_id,
+            feed_mode = feedMode,
+            bottle_amount_ml = bottleAmount,
+            solids_amount = solidsAmount,
+            nappy_type = nappyType
+        )
     }
 }
 

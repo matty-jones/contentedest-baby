@@ -35,4 +35,8 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideApi(retrofit: Retrofit): ApiService = retrofit.create(ApiService::class.java)
+
+    @Provides
+    @Singleton
+    fun provideSyncRepository(api: ApiService): SyncRepository = SyncRepository(api)
 }

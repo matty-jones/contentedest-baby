@@ -48,4 +48,34 @@ class NetworkTests {
         assertEquals("dev1", resp.device_id)
         assertEquals("t123", resp.token)
     }
+
+    @Test
+    fun syncPush() {
+        server.enqueue(MockResponse().setBody("{\"server_clock\": 123, \"results\": []}").setHeader("Content-Type", "application/json"))
+        val events = listOf(
+            com.contentedest.baby.net.EventDto(
+                event_id = "e1",
+                type = "sleep",
+                start_ts = 1000L,
+                end_ts = 2000L,
+                created_ts = 1000L,
+                updated_ts = 2000L,
+                version = 1,
+                device_id = "dev1"
+            )
+        )
+        val resp = kotlinx.coroutines.runBlocking { api.syncPush(events) }
+        assertEquals(123L, resp.server_clock)
+        assertEquals(0, resp.results.size)
+    }
+
+    @Test
+    fun syncPull() {
+        val eventsJson = "[{\"event_id\": \"e1\", \"type\": \"sleep\", \"start_ts\": 1000, \"end_ts\": 2000, \"created_ts\": 1000, \"updated_ts\": 2000, \"version\": 1, \"device_id\": \"dev1\"}]"
+        server.enqueue(MockResponse().setBody("{\"server_clock\": 123, \"events\": $eventsJson}").setHeader("Content-Type", "application/json"))
+        val resp = kotlinx.coroutines.runBlocking { api.syncPull(100L) }
+        assertEquals(123L, resp.server_clock)
+        assertEquals(1, resp.events.size)
+        assertEquals("e1", resp.events[0].event_id)
+    }
 }

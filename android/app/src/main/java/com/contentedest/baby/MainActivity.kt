@@ -8,7 +8,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.work.WorkManager
 import com.contentedest.baby.net.TokenStorage
+import com.contentedest.baby.sync.SyncWorker
 import com.contentedest.baby.ui.daily.DailyLogScreen
 import com.contentedest.baby.ui.daily.DailyLogViewModel
 import com.contentedest.baby.ui.pairing.PairingScreen
@@ -17,6 +19,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import java.time.LocalDate
 import javax.inject.Inject
 
+@OptIn(ExperimentalMaterial3Api::class) // Added OptIn for ExperimentalMaterial3Api
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     @Inject lateinit var tokenStorage: TokenStorage
@@ -32,12 +35,24 @@ class MainActivity : ComponentActivity() {
                         val vm: PairingViewModel = hiltViewModel()
                         PairingScreen(vm)
                         LaunchedEffect(Unit) {
-                            vm.paired.collect { paired -> if (paired) hasToken.value = true }
+                            vm.paired.collect { paired ->
+                                if (paired) {
+                                    hasToken.value = true
+                                    // Schedule periodic sync
+                                    val deviceId = "device-${System.currentTimeMillis()}" // TODO: get actual device ID
+                                    SyncWorker.schedulePeriodicSync(this@MainActivity, deviceId)
+                                }
+                            }
                         }
                     } else {
                         val vm: DailyLogViewModel = hiltViewModel()
                         LaunchedEffect(Unit) { vm.load(LocalDate.now()) }
                         DailyLogScreen(vm)
+                        // Handle undo snackbar dismissal
+                        LaunchedEffect(vm.showUndoSnackbar.collectAsState().value) {
+                            // This could trigger a SnackbarHostState.showSnackbar() call
+                            // For now, it's handled internally in the screen
+                        }
                     }
                 }
             }
