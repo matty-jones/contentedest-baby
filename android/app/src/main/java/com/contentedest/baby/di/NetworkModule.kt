@@ -1,6 +1,7 @@
 package com.contentedest.baby.di
 
 import com.contentedest.baby.net.ApiService
+import com.contentedest.baby.data.repo.SyncRepository
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn

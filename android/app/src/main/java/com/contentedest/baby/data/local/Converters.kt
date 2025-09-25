@@ -8,6 +8,12 @@ enum class BreastSide { left, right }
 
 class Converters {
     @TypeConverter
+    fun fromString(value: String?): String? {
+        // Simple pass-through for String
+        return value
+    }
+
+    @TypeConverter
     fun fromEventType(value: EventType?): String? = value?.name
 
     @TypeConverter

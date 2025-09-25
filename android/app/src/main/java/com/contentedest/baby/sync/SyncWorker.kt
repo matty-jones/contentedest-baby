@@ -1,18 +1,21 @@
 package com.contentedest.baby.sync
 
 import android.content.Context
+import androidx.hilt.work.HiltWorker
 import androidx.work.*
+import androidx.work.ListenableWorker.Result as WorkerResult
 import com.contentedest.baby.data.local.EventEntity
 import com.contentedest.baby.data.repo.EventRepository
 import com.contentedest.baby.data.repo.SyncRepository
 import com.contentedest.baby.net.EventDto
 import com.contentedest.baby.net.TokenStorage
 import dagger.assisted.Assisted
-import dagger.assisted.AssistedFactory
+// Removed import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 
+@HiltWorker // Added annotation
 class SyncWorker @AssistedInject constructor(
     @Assisted private val appContext: Context,
     @Assisted private val params: WorkerParameters,
@@ -21,16 +24,13 @@ class SyncWorker @AssistedInject constructor(
     private val tokenStorage: TokenStorage
 ) : CoroutineWorker(appContext, params) {
 
-    @AssistedFactory
-    interface Factory {
-        fun create(appContext: Context, params: WorkerParameters): SyncWorker
-    }
+    // Removed the @AssistedFactory interface Factory
 
-    override suspend fun doWork(): Result = coroutineScope {
+    override suspend fun doWork(): ListenableWorker.Result = coroutineScope {
         try {
             val token = tokenStorage.getToken()
             if (token == null) {
-                return@coroutineScope Result.failure()
+                return@coroutineScope WorkerResult.failure()
             }
 
             // TODO: Add LAN reachability check here
@@ -51,26 +51,29 @@ class SyncWorker @AssistedInject constructor(
             pushDeferred.await()
 
             // Process pull results
-            when (pullResult) {
+            return@coroutineScope when (pullResult) {
                 is com.contentedest.baby.data.repo.Result.Success -> {
-                    val (newClock, events) = pullResult.data
-                    eventRepository.updateServerClock(newClock)
+                    val successData = pullResult.data
+                    if (successData is Pair<*, *>) {
+                        val newClock = successData.first as Long
+                        val events = successData.second as List<EventDto>
+                        eventRepository.updateServerClock(newClock)
 
-                    // Apply server events to local DB
-                    events.forEach { eventDto ->
-                        val entity = eventDto.toEntity()
-                        // TODO: Handle conflicts based on version/updated_ts/device_id
-                        // For now, just upsert
+                        // Apply server events to local DB
+                        events.forEach { eventDto: EventDto ->
+                            val entity = eventDto.toEntity()
+                            // TODO: Handle conflicts based on version/updated_ts/device_id
+                            // For now, just upsert
+                        }
                     }
-
-                    Result.success()
+                    WorkerResult.success()
                 }
                 is com.contentedest.baby.data.repo.Result.Failure -> {
-                    Result.retry()
+                    WorkerResult.retry()
                 }
             }
         } catch (e: Exception) {
-            Result.retry()
+            WorkerResult.retry()
         }
     }
 
@@ -99,15 +102,40 @@ class SyncWorker @AssistedInject constructor(
 
 // Extension function to convert EventDto to EventEntity
 private fun EventDto.toEntity(): EventEntity {
-    val feedMode = payload?.get("mode")?.toString()?.let { com.contentedest.baby.data.local.FeedMode.valueOf(it) }
-    val bottleAmount = payload?.get("bottle_amount_ml") as? Int
-    val solidsAmount = payload?.get("solids_amount") as? Int
-    val nappyType = payload?.get("nappy_type")?.toString()
+    // For now, we'll store the payload as a simple string and parse basic fields
+    // In a production app, you would properly parse the JsonElement
+    val payloadStr = payload?.toString() ?: "{}"
+
+    // Simple parsing of common fields - this is a simplified approach
+    val feedMode = try {
+        if (payloadStr.contains("\"mode\"")) {
+            val modeMatch = "\"mode\"\\s*:\\s*\"([^\"]+)\"".toRegex().find(payloadStr)
+            modeMatch?.groupValues?.get(1)?.let { com.contentedest.baby.data.local.FeedMode.valueOf(it) }
+        } else null
+    } catch (e: Exception) { null }
+
+    val bottleAmount = try {
+        if (payloadStr.contains("bottle_amount_ml")) {
+            "bottle_amount_ml\"?\\s*:\\s*(\\d+)".toRegex().find(payloadStr)?.groupValues?.get(1)?.toIntOrNull()
+        } else null
+    } catch (e: Exception) { null }
+
+    val solidsAmount = try {
+        if (payloadStr.contains("solids_amount")) {
+            "solids_amount\"?\\s*:\\s*(\\d+)".toRegex().find(payloadStr)?.groupValues?.get(1)?.toIntOrNull()
+        } else null
+    } catch (e: Exception) { null }
+
+    val nappyType = try {
+        if (payloadStr.contains("nappy_type")) {
+            "\"nappy_type\"\\s*:\\s*\"([^\"]+)\"".toRegex().find(payloadStr)?.groupValues?.get(1)
+        } else null
+    } catch (e: Exception) { null }
 
     return EventEntity(
         event_id = event_id,
         type = com.contentedest.baby.data.local.EventType.valueOf(type),
-        payload = payload,
+        payload = payload?.toString(), // Convert JsonElement to String
         start_ts = start_ts,
         end_ts = end_ts,
         ts = ts,

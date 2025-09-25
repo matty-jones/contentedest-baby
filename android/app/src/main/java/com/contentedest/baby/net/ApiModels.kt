@@ -1,6 +1,7 @@
 package com.contentedest.baby.net
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 @Serializable
 data class PairRequest(val pairing_code: String, val device_id: String, val name: String? = null)
@@ -15,7 +16,7 @@ data class Healthz(val status: String)
 data class EventDto(
     val event_id: String,
     val type: String,
-    val payload: Map<String, Any?>? = null,
+    val payload: JsonElement? = null,
     val start_ts: Long? = null,
     val end_ts: Long? = null,
     val ts: Long? = null,

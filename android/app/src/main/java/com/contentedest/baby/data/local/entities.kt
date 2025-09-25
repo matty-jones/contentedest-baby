@@ -39,7 +39,10 @@ data class EventEntity(
     val nappy_type: String? = null,
 
     // Optional note (FTS could be added later)
-    val note: String? = null
+    val note: String? = null,
+
+    // Raw payload for extensibility
+    val payload: String? = null
 )
 
 @Entity(
