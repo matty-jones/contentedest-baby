@@ -20,8 +20,21 @@ pip install -r server/requirements.txt
 
 2) Run API locally:
 
+**Option A: Use the convenience script (recommended)**
 ```
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --app-dir server
+./start_server.sh [-p PORT] [-h HOST]
+```
+
+The script supports the following options:
+- `-p PORT`: Set the port (default: 8005)
+- `-h HOST`: Set the host (default: 0.0.0.0)
+- `--help`: Show help information
+
+**Option B: Manual commands**
+```
+cd server
+source .venv/bin/activate
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 3) Run tests:
