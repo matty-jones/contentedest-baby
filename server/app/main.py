@@ -1,6 +1,7 @@
 from __future__ import annotations
 import time
-from fastapi import FastAPI, Depends
+import logging
+from fastapi import FastAPI, Depends, Request
 from sqlalchemy.orm import Session
 from .database import Base, engine
 from .models import Device, Event
@@ -12,6 +13,19 @@ from . import crud
 
 app = FastAPI(title="The Contentedest Baby Server")
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.info(f"Request: {request.method} {request.url}")
+    response = await call_next(request)
+    logger.info(f"Response: {response.status_code}")
+    return response
 
 Base.metadata.create_all(bind=engine)
 
@@ -34,11 +48,13 @@ def pair(req: PairRequest, db: Session = Depends(get_db)):
         enabled=True,
     )
     crud.upsert_device(db, device)
+    logger.info(f"Paired device: {req.device_id}, name: {req.name}")
     return PairResponse(device_id=req.device_id, token=token)
 
 
 @app.post("/sync/push", response_model=SyncPushResponse)
 def sync_push(items: list[EventDTO], db: Session = Depends(get_db), device: Device = Depends(get_current_device)):
+    logger.info(f"Sync push from device {device.device_id}: {len(items)} events")
     incoming = []
     for dto in items:
         incoming.append(Event(
@@ -55,6 +71,7 @@ def sync_push(items: list[EventDTO], db: Session = Depends(get_db), device: Devi
             device_id=dto.device_id,
         ))
     applied_events, new_clock = crud.upsert_events(db, incoming)
+    logger.info(f"Applied {len(applied_events)} events, new clock: {new_clock}")
     results = []
     for ev in applied_events:
         results.append(SyncPushResponseItem(
@@ -80,6 +97,7 @@ def sync_push(items: list[EventDTO], db: Session = Depends(get_db), device: Devi
 def sync_pull(since: int = 0, db: Session = Depends(get_db), device: Device = Depends(get_current_device)):
     events = crud.select_events_since(db, since)
     current_clock = crud.get_clock(db)
+    logger.info(f"Sync pull from device {device.device_id}: since={since}, returning {len(events)} events, clock={current_clock}")
     payload = [
         EventDTO(
             event_id=ev.event_id,

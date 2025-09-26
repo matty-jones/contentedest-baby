@@ -10,7 +10,7 @@ class SyncRepository(private val api: ApiService) {
     suspend fun syncPush(events: List<EventDto>): Result<Long> = withContext(Dispatchers.IO) {
         try {
             val response = api.syncPush(events)
-            Result.Success(response.server_clock)
+            Result.Success(response.serverClock)
         } catch (e: Exception) {
             Result.Failure(e)
         }
@@ -19,7 +19,7 @@ class SyncRepository(private val api: ApiService) {
     suspend fun syncPull(since: Long): Result<Pair<Long, List<EventDto>>> = withContext(Dispatchers.IO) {
         try {
             val response = api.syncPull(since)
-            Result.Success(response.server_clock to response.events)
+            Result.Success(response.serverClock to response.events)
         } catch (e: Exception) {
             Result.Failure(e)
         }

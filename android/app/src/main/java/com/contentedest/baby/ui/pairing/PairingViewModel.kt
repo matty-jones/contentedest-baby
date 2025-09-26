@@ -19,11 +19,25 @@ class PairingViewModel @Inject constructor(
     private val _paired = MutableStateFlow(false)
     val paired: StateFlow<Boolean> = _paired
 
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error
+
     fun pair(pairingCode: String, deviceId: String, name: String?) {
         viewModelScope.launch {
-            val resp = api.pair(PairRequest(pairingCode, deviceId, name))
-            tokenStorage.saveToken(resp.token)
-            _paired.value = true
+            try {
+                _error.value = null // Clear previous errors
+                val resp = api.pair(PairRequest(pairingCode, deviceId, name))
+                tokenStorage.saveToken(resp.token)
+                _paired.value = true
+            } catch (e: Exception) {
+                _error.value = "Pairing failed: ${e.message ?: "Unknown error"}"
+                // Log the full error for debugging
+                println("Pairing error: $e")
+            }
         }
+    }
+
+    fun clearError() {
+        _error.value = null
     }
 }

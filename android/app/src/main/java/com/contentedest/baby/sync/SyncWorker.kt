@@ -103,7 +103,7 @@ class SyncWorker @AssistedInject constructor(
 // Extension function to convert EventDto to EventEntity
 private fun EventDto.toEntity(): EventEntity {
     // For now, we'll store the payload as a simple string and parse basic fields
-    // In a production app, you would properly parse the JsonElement
+    // In a production app, you would properly parse the Map<String, Any>
     val payloadStr = payload?.toString() ?: "{}"
 
     // Simple parsing of common fields - this is a simplified approach
@@ -133,17 +133,17 @@ private fun EventDto.toEntity(): EventEntity {
     } catch (e: Exception) { null }
 
     return EventEntity(
-        event_id = event_id,
+        event_id = eventId,
         type = com.contentedest.baby.data.local.EventType.valueOf(type),
-        payload = payload?.toString(), // Convert JsonElement to String
-        start_ts = start_ts,
-        end_ts = end_ts,
+        payload = payload?.toString(), // Convert Map to String
+        start_ts = startTs,
+        end_ts = endTs,
         ts = ts,
-        created_ts = created_ts,
-        updated_ts = updated_ts,
+        created_ts = createdTs,
+        updated_ts = updatedTs,
         version = version,
         deleted = deleted,
-        device_id = device_id,
+        device_id = deviceId,
         feed_mode = feedMode,
         bottle_amount_ml = bottleAmount,
         solids_amount = solidsAmount,

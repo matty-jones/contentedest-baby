@@ -1,37 +1,50 @@
 package com.contentedest.baby.net
 
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonElement
+import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
 
-@Serializable
-data class PairRequest(val pairing_code: String, val device_id: String, val name: String? = null)
-
-@Serializable
-data class PairResponse(val device_id: String, val token: String)
-
-@Serializable
-data class Healthz(val status: String)
-
-@Serializable
-data class EventDto(
-    val event_id: String,
-    val type: String,
-    val payload: JsonElement? = null,
-    val start_ts: Long? = null,
-    val end_ts: Long? = null,
-    val ts: Long? = null,
-    val created_ts: Long,
-    val updated_ts: Long,
-    val version: Int,
-    val deleted: Boolean = false,
-    val device_id: String
+@JsonClass(generateAdapter = true)
+data class PairRequest(
+    @Json(name = "pairing_code") val pairingCode: String,
+    @Json(name = "device_id") val deviceId: String,
+    val name: String? = null
 )
 
-@Serializable
+@JsonClass(generateAdapter = true)
+data class PairResponse(
+    @Json(name = "device_id") val deviceId: String,
+    val token: String
+)
+
+@JsonClass(generateAdapter = true)
+data class Healthz(val status: String)
+
+@JsonClass(generateAdapter = true)
+data class EventDto(
+    @Json(name = "event_id") val eventId: String,
+    val type: String,
+    val payload: Map<String, Any>? = null,
+    @Json(name = "start_ts") val startTs: Long? = null,
+    @Json(name = "end_ts") val endTs: Long? = null,
+    val ts: Long? = null,
+    @Json(name = "created_ts") val createdTs: Long,
+    @Json(name = "updated_ts") val updatedTs: Long,
+    val version: Int,
+    val deleted: Boolean = false,
+    @Json(name = "device_id") val deviceId: String
+)
+
+@JsonClass(generateAdapter = true)
 data class SyncPushResponseItem(val event: EventDto, val applied: Boolean)
 
-@Serializable
-data class SyncPushResponse(val server_clock: Long, val results: List<SyncPushResponseItem>)
+@JsonClass(generateAdapter = true)
+data class SyncPushResponse(
+    @Json(name = "server_clock") val serverClock: Long,
+    val results: List<SyncPushResponseItem>
+)
 
-@Serializable
-data class SyncPullResponse(val server_clock: Long, val events: List<EventDto>)
+@JsonClass(generateAdapter = true)
+data class SyncPullResponse(
+    @Json(name = "server_clock") val serverClock: Long,
+    val events: List<EventDto>
+)

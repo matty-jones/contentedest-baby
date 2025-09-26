@@ -11,6 +11,7 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
+import com.squareup.moshi.Moshi
 import javax.inject.Singleton
 
 @Module
@@ -28,8 +29,8 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideRetrofit(client: OkHttpClient): Retrofit = Retrofit.Builder()
-        .baseUrl("http://127.0.0.1:8000/")
-        .addConverterFactory(MoshiConverterFactory.create())
+        .baseUrl("http://10.0.2.2:8005/")
+        .addConverterFactory(MoshiConverterFactory.create(Moshi.Builder().build()))
         .client(client)
         .build()
 

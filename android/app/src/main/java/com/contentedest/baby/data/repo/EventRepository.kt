@@ -4,11 +4,9 @@ import com.contentedest.baby.data.local.*
 import com.contentedest.baby.net.EventDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.JsonAdapter
+import com.squareup.moshi.Types
 import java.io.StringWriter
 import java.time.Instant
 import java.time.ZoneId
@@ -43,6 +41,62 @@ class EventRepository(
     }
 
     suspend fun logNappy(nowUtc: Long, deviceId: String, type: String, note: String?): String = withContext(Dispatchers.IO) {
+        val id = UUID.randomUUID().toString()
+        val event = EventEntity(
+            event_id = id,
+            device_id = deviceId,
+            created_ts = nowUtc,
+            updated_ts = nowUtc,
+            version = 1,
+            deleted = false,
+            type = EventType.nappy,
+            ts = nowUtc,
+            nappy_type = type,
+            note = note
+        )
+        eventsDao.upsertEvent(event)
+        id
+    }
+
+    suspend fun createSleep(nowUtc: Long, deviceId: String, note: String? = null): String = withContext(Dispatchers.IO) {
+        val id = UUID.randomUUID().toString()
+        val event = EventEntity(
+            event_id = id,
+            device_id = deviceId,
+            created_ts = nowUtc,
+            updated_ts = nowUtc,
+            version = 1,
+            deleted = false,
+            type = EventType.sleep,
+            start_ts = nowUtc,
+            end_ts = null,
+            ts = null,
+            note = note
+        )
+        eventsDao.upsertEvent(event)
+        id
+    }
+
+    suspend fun startFeed(nowUtc: Long, deviceId: String, mode: com.contentedest.baby.data.local.FeedMode, note: String? = null): String = withContext(Dispatchers.IO) {
+        val id = UUID.randomUUID().toString()
+        val event = EventEntity(
+            event_id = id,
+            device_id = deviceId,
+            created_ts = nowUtc,
+            updated_ts = nowUtc,
+            version = 1,
+            deleted = false,
+            type = EventType.feed,
+            feed_mode = mode,
+            ts = null,
+            note = note
+        )
+        eventsDao.upsertEvent(event)
+        eventsDao.upsertSegments(listOf(com.contentedest.baby.data.local.FeedSegmentEntity(event_id = id, side = com.contentedest.baby.data.local.BreastSide.left, start_ts = nowUtc, end_ts = nowUtc)))
+        id
+    }
+
+    suspend fun createNappy(nowUtc: Long, deviceId: String, type: String, note: String? = null): String = withContext(Dispatchers.IO) {
         val id = UUID.randomUUID().toString()
         val event = EventEntity(
             event_id = id,
@@ -115,75 +169,79 @@ class EventRepository(
 
     // Convert EventEntity to EventDto for API
     private fun EventEntity.toDto(): EventDto {
+        val payloadMap: Map<String, Any>? = when (type) {
+            EventType.feed -> {
+                val map = mutableMapOf<String, Any>()
+                feed_mode?.name?.let { map["mode"] = it }
+                bottle_amount_ml?.let { map["bottle_amount_ml"] = it }
+                solids_amount?.let { map["solids_amount"] = it }
+                map.takeIf { it.isNotEmpty() }
+            }
+            EventType.nappy -> {
+                val map = mutableMapOf<String, Any>()
+                nappy_type?.let { map["nappy_type"] = it }
+                map.takeIf { it.isNotEmpty() }
+            }
+            else -> null
+        }
+
         return EventDto(
-            event_id = event_id,
+            eventId = event_id,
             type = type.name,
-            payload = when (type) {
-                EventType.feed -> buildJsonObject {
-                    feed_mode?.name?.let { put("mode", it) }
-                    bottle_amount_ml?.let { put("bottle_amount_ml", it) }
-                    solids_amount?.let { put("solids_amount", it) }
-                }
-                EventType.nappy -> buildJsonObject {
-                    nappy_type?.let { put("nappy_type", it) }
-                }
-                else -> null
-            },
-            start_ts = start_ts,
-            end_ts = end_ts,
+            payload = payloadMap,
+            startTs = start_ts,
+            endTs = end_ts,
             ts = ts,
-            created_ts = created_ts,
-            updated_ts = updated_ts,
+            createdTs = created_ts,
+            updatedTs = updated_ts,
             version = version,
             deleted = deleted,
-            device_id = device_id
+            deviceId = device_id
         )
     }
 
     // Convert EventDto to EventEntity for local storage
     private fun EventDto.toEntity(): EventEntity {
-        // For now, we'll store the payload as a simple string and parse basic fields
-        // In a production app, you would properly parse the JsonElement
-        val payloadStr = payload?.toString() ?: "{}"
+        // Parse payload Map<String, Any> to extract fields
+        val payloadMap = payload ?: emptyMap()
 
-        // Simple parsing of common fields - this is a simplified approach
+        // Extract values from payload map
         val feedMode = try {
-            if (payloadStr.contains("\"mode\"")) {
-                val modeMatch = "\"mode\"\\s*:\\s*\"([^\"]+)\"".toRegex().find(payloadStr)
-                modeMatch?.groupValues?.get(1)?.let { FeedMode.valueOf(it) }
-            } else null
+            (payloadMap["mode"] as? String)?.let { FeedMode.valueOf(it) }
         } catch (e: Exception) { null }
 
         val bottleAmount = try {
-            if (payloadStr.contains("bottle_amount_ml")) {
-                "bottle_amount_ml\"?\\s*:\\s*(\\d+)".toRegex().find(payloadStr)?.groupValues?.get(1)?.toIntOrNull()
-            } else null
+            when (val amount = payloadMap["bottle_amount_ml"]) {
+                is Number -> amount.toInt()
+                is String -> amount.toIntOrNull()
+                else -> null
+            }
         } catch (e: Exception) { null }
 
         val solidsAmount = try {
-            if (payloadStr.contains("solids_amount")) {
-                "solids_amount\"?\\s*:\\s*(\\d+)".toRegex().find(payloadStr)?.groupValues?.get(1)?.toIntOrNull()
-            } else null
+            when (val amount = payloadMap["solids_amount"]) {
+                is Number -> amount.toInt()
+                is String -> amount.toIntOrNull()
+                else -> null
+            }
         } catch (e: Exception) { null }
 
         val nappyType = try {
-            if (payloadStr.contains("nappy_type")) {
-                "\"nappy_type\"\\s*:\\s*\"([^\"]+)\"".toRegex().find(payloadStr)?.groupValues?.get(1)
-            } else null
+            payloadMap["nappy_type"] as? String
         } catch (e: Exception) { null }
 
         return EventEntity(
-            event_id = event_id,
+            event_id = eventId,
             type = EventType.valueOf(type),
-            payload = payload?.toString(), // Convert JsonElement to String
-            start_ts = start_ts,
-            end_ts = end_ts,
+            payload = payloadMap.takeIf { it.isNotEmpty() }?.toString(), // Convert Map to String
+            start_ts = startTs,
+            end_ts = endTs,
             ts = ts,
-            created_ts = created_ts,
-            updated_ts = updated_ts,
+            created_ts = createdTs,
+            updated_ts = updatedTs,
             version = version,
             deleted = deleted,
-            device_id = device_id,
+            device_id = deviceId,
             feed_mode = feedMode,
             bottle_amount_ml = bottleAmount,
             solids_amount = solidsAmount,
@@ -229,7 +287,14 @@ class EventRepository(
             )
         }
 
-        Json.encodeToString(mapOf("events" to eventsForJson))
+        val moshi = Moshi.Builder().build()
+        val mapType = Types.newParameterizedType(Map::class.java, String::class.java, Any::class.java)
+        val mapAdapter: JsonAdapter<Map<String, Any>> = moshi.adapter(mapType)
+        val listType = Types.newParameterizedType(List::class.java, mapType)
+        val listAdapter: JsonAdapter<List<Map<String, Any>>> = moshi.adapter(listType)
+
+        val exportData = mapOf("events" to eventsForJson)
+        mapAdapter.toJson(exportData)
     }
 }
 
