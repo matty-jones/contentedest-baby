@@ -114,6 +114,13 @@ class EventRepository(
         id
     }
 
+    suspend fun saveServerEvents(events: List<EventDto>) = withContext(Dispatchers.IO) {
+        events.forEach { eventDto ->
+            val entity = eventDto.toEntity()
+            eventsDao.upsertEvent(entity)
+        }
+    }
+
     suspend fun startBreastFeed(nowUtc: Long, deviceId: String, side: BreastSide): String = withContext(Dispatchers.IO) {
         val id = UUID.randomUUID().toString()
         val event = EventEntity(

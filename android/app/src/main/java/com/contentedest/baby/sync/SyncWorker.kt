@@ -60,11 +60,7 @@ class SyncWorker @AssistedInject constructor(
                         eventRepository.updateServerClock(newClock)
 
                         // Apply server events to local DB
-                        events.forEach { eventDto: EventDto ->
-                            val entity = eventDto.toEntity()
-                            // TODO: Handle conflicts based on version/updated_ts/device_id
-                            // For now, just upsert
-                        }
+                        eventRepository.saveServerEvents(events)
                     }
                     WorkerResult.success()
                 }

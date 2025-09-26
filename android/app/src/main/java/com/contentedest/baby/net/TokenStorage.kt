@@ -23,7 +23,23 @@ class TokenStorage(context: Context) {
 
     fun getToken(): String? = prefs.getString(KEY_TOKEN, null)
 
-    fun clear() { prefs.edit().remove(KEY_TOKEN).apply() }
+    fun saveDeviceId(deviceId: String) {
+        prefs.edit().putString(KEY_DEVICE_ID, deviceId).apply()
+    }
 
-    companion object { private const val KEY_TOKEN = "auth_token" }
+    fun getDeviceId(): String? = prefs.getString(KEY_DEVICE_ID, null)
+
+    fun isPaired(): Boolean = getToken() != null && getDeviceId() != null
+
+    fun clear() {
+        prefs.edit()
+            .remove(KEY_TOKEN)
+            .remove(KEY_DEVICE_ID)
+            .apply()
+    }
+
+    companion object {
+        private const val KEY_TOKEN = "auth_token"
+        private const val KEY_DEVICE_ID = "device_id"
+    }
 }

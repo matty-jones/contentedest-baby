@@ -24,7 +24,9 @@ import androidx.compose.ui.unit.dp
 import com.contentedest.baby.data.local.EventEntity
 import com.contentedest.baby.data.local.EventType
 import com.contentedest.baby.data.repo.EventRepository
-import com.contentedest.baby.ui.events.EventCreationScreen
+import com.contentedest.baby.ui.events.SleepCreationScreen
+import com.contentedest.baby.ui.events.FeedCreationScreen
+import com.contentedest.baby.ui.events.NappyCreationScreen
 import dagger.hilt.android.AndroidEntryPoint
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -191,19 +193,45 @@ fun DailyLogScreen(
         }
     }
 
-    // Event creation dialog
-    selectedEventType?.let { eventType ->
-        EventCreationScreen(
-            eventType = eventType,
-            eventRepository = eventRepository,
-            deviceId = deviceId,
-            onDismiss = { selectedEventType = null },
-            onEventCreated = { eventId ->
-                // Refresh the list after event creation
-                vm.load(currentDate)
-                selectedEventType = null
-            }
-        )
+    // Event creation dialogs
+    when (selectedEventType) {
+        EventType.sleep -> {
+            SleepCreationScreen(
+                eventRepository = eventRepository,
+                deviceId = deviceId,
+                onDismiss = { selectedEventType = null },
+                onEventCreated = { eventId ->
+                    // Refresh the list after event creation
+                    vm.load(currentDate)
+                    selectedEventType = null
+                }
+            )
+        }
+        EventType.feed -> {
+            FeedCreationScreen(
+                eventRepository = eventRepository,
+                deviceId = deviceId,
+                onDismiss = { selectedEventType = null },
+                onEventCreated = { eventId ->
+                    // Refresh the list after event creation
+                    vm.load(currentDate)
+                    selectedEventType = null
+                }
+            )
+        }
+        EventType.nappy -> {
+            NappyCreationScreen(
+                eventRepository = eventRepository,
+                deviceId = deviceId,
+                onDismiss = { selectedEventType = null },
+                onEventCreated = { eventId ->
+                    // Refresh the list after event creation
+                    vm.load(currentDate)
+                    selectedEventType = null
+                }
+            )
+        }
+        null -> {} // No dialog to show
     }
 }
 

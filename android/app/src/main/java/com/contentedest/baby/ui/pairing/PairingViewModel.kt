@@ -28,6 +28,7 @@ class PairingViewModel @Inject constructor(
                 _error.value = null // Clear previous errors
                 val resp = api.pair(PairRequest(pairingCode, deviceId, name))
                 tokenStorage.saveToken(resp.token)
+                tokenStorage.saveDeviceId(deviceId)
                 _paired.value = true
             } catch (e: Exception) {
                 _error.value = "Pairing failed: ${e.message ?: "Unknown error"}"

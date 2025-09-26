@@ -12,7 +12,9 @@ import com.contentedest.baby.ui.theme.TheContentedestBabyTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.contentedest.baby.data.repo.EventRepository
 import com.contentedest.baby.net.TokenStorage
 import com.contentedest.baby.sync.SyncWorker
@@ -39,7 +41,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             TheContentedestBabyTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                val hasToken = remember { mutableStateOf(tokenStorage.getToken() != null) }
+                val isPaired = remember { mutableStateOf(tokenStorage.isPaired()) }
                 var showExportScreen by remember { mutableStateOf(false) }
                 var showStatisticsScreen by remember { mutableStateOf(false) }
 
@@ -47,7 +49,7 @@ class MainActivity : ComponentActivity() {
                     TopAppBar(
                         title = { Text("The Contentedest Baby") },
                         actions = {
-                            if (hasToken.value) {
+                            if (isPaired.value) {
                                 IconButton(onClick = { showStatisticsScreen = true }) {
                                     Icon(
                                         imageVector = Icons.Filled.MoreVert,
@@ -64,16 +66,24 @@ class MainActivity : ComponentActivity() {
                         }
                     )
 
-                    if (!hasToken.value) {
+                    if (!isPaired.value) {
                         val vm: PairingViewModel = hiltViewModel()
                         PairingScreen(vm)
                         LaunchedEffect(Unit) {
                             vm.paired.collect { paired ->
                                 if (paired) {
-                                    hasToken.value = true
+                                    isPaired.value = true
+                                    val deviceId = tokenStorage.getDeviceId() ?: "device-${System.currentTimeMillis()}"
+
                                     // Schedule periodic sync
-                                    val deviceId = "device-${System.currentTimeMillis()}" // TODO: get actual device ID
                                     SyncWorker.schedulePeriodicSync(this@MainActivity, deviceId)
+
+                                    // Trigger immediate sync to pull existing data
+                                    val workManager = WorkManager.getInstance(this@MainActivity)
+                                    val oneTimeRequest = OneTimeWorkRequestBuilder<SyncWorker>()
+                                        .setInputData(workDataOf("device_id" to deviceId))
+                                        .build()
+                                    workManager.enqueue(oneTimeRequest)
                                 }
                             }
                             vm.error.collect { error ->
@@ -92,7 +102,7 @@ class MainActivity : ComponentActivity() {
                             StatisticsScreen(statsVm) { showStatisticsScreen = false }
                         } else {
                             val vm: DailyLogViewModel = hiltViewModel()
-                            val deviceId = "device-${System.currentTimeMillis()}" // TODO: Get actual device ID
+                            val deviceId = tokenStorage.getDeviceId() ?: "device-${System.currentTimeMillis()}"
                             LaunchedEffect(Unit) { vm.load(LocalDate.now()) }
                             DailyLogScreen(vm, eventRepository, deviceId)
                             // Handle undo snackbar dismissal

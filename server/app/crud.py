@@ -29,6 +29,10 @@ def get_clock(session: Session) -> int:
     return sc.counter
 
 
+def get_device_by_id(session: Session, device_id: str) -> Device | None:
+    return session.get(Device, device_id)
+
+
 def upsert_device(session: Session, device: Device) -> None:
     existing = session.get(Device, device.device_id)
     if existing is None:
