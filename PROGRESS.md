@@ -19,3 +19,15 @@ Date: 2025-09-19
 
 - All timestamps are UTC seconds. Sleep classification per PRD (19:00–07:00 and ≥2h => Night).
 - Conflict rule: (version, updated_ts, device_id).
+
+## Recent Fixes
+
+- Fixed server_clock issue: Seeded events now have proper server_clock values (1-4193) so they can be synced to Android app via /sync/pull endpoint.
+- Fixed Android authentication: Added auth interceptor to OkHttp client to automatically include Bearer token in API requests.
+- Fixed Android pairing persistence: Updated MainActivity to properly check pairing state on app startup.
+- Fixed Android startup sync: Added sync trigger for already paired devices on app startup to pull existing events.
+- Added debug logging to SyncWorker and EventRepository to trace sync flow and identify where events are being lost.
+- Fixed SyncWorker constructor: Changed from @AssistedInject to proper HiltWorker constructor to fix WorkManager instantiation error.
+- Fixed SyncWorker params reference: Changed params.inputData to inputData after constructor change.
+- Fixed SyncWorker constructor: Added back @AssistedInject and @Assisted annotations as required by @HiltWorker annotation.
+- Fixed SyncWorker constructor pattern: Reverted to correct @AssistedInject with @Assisted annotations as required by @HiltWorker annotation.

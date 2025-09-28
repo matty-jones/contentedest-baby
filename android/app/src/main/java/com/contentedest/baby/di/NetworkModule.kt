@@ -19,9 +19,28 @@ import javax.inject.Singleton
 object NetworkModule {
     @Provides
     @Singleton
-    fun provideOkHttp(): OkHttpClient {
+    fun provideOkHttp(tokenStorage: com.contentedest.baby.net.TokenStorage): OkHttpClient {
         val logging = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC }
+        
+        val authInterceptor = Interceptor { chain ->
+            val token = tokenStorage.getToken()
+            val request = if (token != null) {
+                chain.request().newBuilder()
+                    .addHeader("Authorization", "Bearer $token")
+                    .build()
+            } else {
+                chain.request()
+            }
+            val response = chain.proceed(request)
+            if (response.code == 401) {
+                // Clear invalid/expired token so UI can prompt re-pairing
+                tokenStorage.clear()
+            }
+            response
+        }
+        
         return OkHttpClient.Builder()
+            .addInterceptor(authInterceptor)
             .addInterceptor(logging)
             .build()
     }

@@ -115,10 +115,12 @@ class EventRepository(
     }
 
     suspend fun saveServerEvents(events: List<EventDto>) = withContext(Dispatchers.IO) {
+        android.util.Log.d("EventRepository", "Saving ${events.size} server events to local database")
         events.forEach { eventDto ->
             val entity = eventDto.toEntity()
             eventsDao.upsertEvent(entity)
         }
+        android.util.Log.d("EventRepository", "Successfully saved ${events.size} events to local database")
     }
 
     suspend fun startBreastFeed(nowUtc: Long, deviceId: String, side: BreastSide): String = withContext(Dispatchers.IO) {
@@ -153,7 +155,9 @@ class EventRepository(
     }
 
     suspend fun eventsForDay(dayStartUtc: Long, dayEndUtc: Long): List<EventEntity> = withContext(Dispatchers.IO) {
-        eventsDao.eventsInRange(dayStartUtc, dayEndUtc)
+        val events = eventsDao.eventsInRange(dayStartUtc, dayEndUtc)
+        android.util.Log.d("EventRepository", "Loaded ${events.size} events for day range $dayStartUtc to $dayEndUtc")
+        events
     }
 
     // Sync functionality
@@ -212,9 +216,19 @@ class EventRepository(
         // Parse payload Map<String, Any> to extract fields
         val payloadMap = payload ?: emptyMap()
 
-        // Extract values from payload map
+        // Extract values from payload map - handle both new format and legacy server format
         val feedMode = try {
+            // Try new format first
             (payloadMap["mode"] as? String)?.let { FeedMode.valueOf(it) }
+                ?: // Try legacy server format - extract from details
+                (payloadMap["details"] as? String)?.let { details ->
+                    when {
+                        details.contains("L&R") -> FeedMode.breast
+                        details.contains("Bottle") -> FeedMode.bottle
+                        details.contains("Solids") -> FeedMode.solids
+                        else -> null
+                    }
+                }
         } catch (e: Exception) { null }
 
         val bottleAmount = try {
@@ -234,8 +248,14 @@ class EventRepository(
         } catch (e: Exception) { null }
 
         val nappyType = try {
-            payloadMap["nappy_type"] as? String
+            // Try new format first
+            (payloadMap["nappy_type"] as? String)
+                ?: // Try legacy server format
+                (payloadMap["details"] as? String)
         } catch (e: Exception) { null }
+
+        // For feed events, use start_ts as the primary timestamp if ts is null
+        val primaryTs = if (type == "feed" && ts == null) startTs else ts
 
         return EventEntity(
             event_id = eventId,
@@ -243,7 +263,7 @@ class EventRepository(
             payload = payloadMap.takeIf { it.isNotEmpty() }?.toString(), // Convert Map to String
             start_ts = startTs,
             end_ts = endTs,
-            ts = ts,
+            ts = primaryTs,
             created_ts = createdTs,
             updated_ts = updatedTs,
             version = version,

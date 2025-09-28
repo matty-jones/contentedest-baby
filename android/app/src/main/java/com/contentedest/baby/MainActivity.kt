@@ -18,8 +18,8 @@ import androidx.work.workDataOf
 import com.contentedest.baby.data.repo.EventRepository
 import com.contentedest.baby.net.TokenStorage
 import com.contentedest.baby.sync.SyncWorker
-import com.contentedest.baby.ui.daily.DailyLogScreen
-import com.contentedest.baby.ui.daily.DailyLogViewModel
+import com.contentedest.baby.ui.timeline.TimelineScreen
+import com.contentedest.baby.ui.timeline.TimelineViewModel
 import com.contentedest.baby.ui.export.ExportScreen
 import com.contentedest.baby.ui.export.ExportViewModel
 import com.contentedest.baby.ui.pairing.PairingScreen
@@ -42,6 +42,20 @@ class MainActivity : ComponentActivity() {
             TheContentedestBabyTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                 val isPaired = remember { mutableStateOf(tokenStorage.isPaired()) }
+                
+                // Update pairing state when token storage changes
+                LaunchedEffect(Unit) {
+                    // Check pairing state on app start
+                    isPaired.value = tokenStorage.isPaired()
+                    
+                    // If already paired, trigger sync to pull existing data
+                    if (isPaired.value) {
+                        val deviceId = tokenStorage.getDeviceId() ?: "device-${System.currentTimeMillis()}"
+                        
+                        // Schedule periodic sync (this will also trigger immediate sync if needed)
+                        SyncWorker.schedulePeriodicSync(this@MainActivity, deviceId)
+                    }
+                }
                 var showExportScreen by remember { mutableStateOf(false) }
                 var showStatisticsScreen by remember { mutableStateOf(false) }
 
@@ -75,15 +89,8 @@ class MainActivity : ComponentActivity() {
                                     isPaired.value = true
                                     val deviceId = tokenStorage.getDeviceId() ?: "device-${System.currentTimeMillis()}"
 
-                                    // Schedule periodic sync
+                                    // Schedule periodic sync (this will also trigger immediate sync if needed)
                                     SyncWorker.schedulePeriodicSync(this@MainActivity, deviceId)
-
-                                    // Trigger immediate sync to pull existing data
-                                    val workManager = WorkManager.getInstance(this@MainActivity)
-                                    val oneTimeRequest = OneTimeWorkRequestBuilder<SyncWorker>()
-                                        .setInputData(workDataOf("device_id" to deviceId))
-                                        .build()
-                                    workManager.enqueue(oneTimeRequest)
                                 }
                             }
                             vm.error.collect { error ->
@@ -101,15 +108,14 @@ class MainActivity : ComponentActivity() {
                             val statsVm: StatisticsViewModel = hiltViewModel()
                             StatisticsScreen(statsVm) { showStatisticsScreen = false }
                         } else {
-                            val vm: DailyLogViewModel = hiltViewModel()
-                            val deviceId = tokenStorage.getDeviceId() ?: "device-${System.currentTimeMillis()}"
-                            LaunchedEffect(Unit) { vm.load(LocalDate.now()) }
-                            DailyLogScreen(vm, eventRepository, deviceId)
-                            // Handle undo snackbar dismissal
-                            LaunchedEffect(vm.showUndoSnackbar.collectAsState().value) {
-                                // This could trigger a SnackbarHostState.showSnackbar() call
-                                // For now, it's handled internally in the screen
-                            }
+                            // Timeline as main screen
+                            val timelineVm = remember { TimelineViewModel(eventRepository) }
+                            TimelineScreen(
+                                vm = timelineVm,
+                                eventRepository = eventRepository,
+                                date = LocalDate.now(),
+                                modifier = Modifier.weight(1f)
+                            )
                         }
                     }
                 }

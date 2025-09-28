@@ -254,17 +254,23 @@ fun EventItem(
             "Sleep: $startTime$endTime"
         }
         EventType.feed -> {
-            val time = formatTime(event.ts ?: 0)
-            val mode = event.feed_mode?.name ?: "unknown"
+            val time = formatTime(event.ts ?: event.start_ts ?: 0)
+            val mode = event.feed_mode?.name?.replaceFirstChar { it.uppercase() } ?: "Unknown"
             val duration = if (event.end_ts != null && event.start_ts != null) {
-                val duration = event.end_ts - event.start_ts
-                " (${duration}s)"
+                val durationSeconds = event.end_ts - event.start_ts
+                val minutes = durationSeconds / 60
+                val seconds = durationSeconds % 60
+                if (minutes > 0) {
+                    " (${minutes}m${if (seconds > 0) " ${seconds}s" else ""})"
+                } else {
+                    " (${seconds}s)"
+                }
             } else ""
             "Feed ($mode): $time$duration"
         }
         EventType.nappy -> {
-            val time = formatTime(event.ts ?: 0)
-            val type = event.nappy_type ?: "unknown"
+            val time = formatTime(event.ts ?: event.start_ts ?: 0)
+            val type = event.nappy_type ?: "Unknown"
             "Nappy ($type): $time"
         }
     }

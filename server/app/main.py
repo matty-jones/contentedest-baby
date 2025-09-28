@@ -116,7 +116,8 @@ def seed_database(db: Session):
                         updated_ts=start_ts,
                         version=1,
                         deleted=False,
-                        device_id="seed_device"
+                        device_id="seed_device",
+                        server_clock=events_added + 1  # Assign sequential server clock values
                     )
 
                     db.add(event)
@@ -131,6 +132,14 @@ def seed_database(db: Session):
                     continue
 
             db.commit()
+            
+            # Update server clock to match the highest server_clock assigned to seeded events
+            from .crud import ensure_server_clock
+            server_clock = ensure_server_clock(db)
+            server_clock.counter = events_added
+            db.add(server_clock)
+            db.commit()
+            
             logger.info(f"Successfully seeded database with {events_added} events")
 
     except Exception as e:
