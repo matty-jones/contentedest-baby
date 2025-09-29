@@ -31,3 +31,17 @@ Date: 2025-09-19
 - Fixed SyncWorker params reference: Changed params.inputData to inputData after constructor change.
 - Fixed SyncWorker constructor: Added back @AssistedInject and @Assisted annotations as required by @HiltWorker annotation.
 - Fixed SyncWorker constructor pattern: Reverted to correct @AssistedInject with @Assisted annotations as required by @HiltWorker annotation.
+
+## Tooling
+
+- Added `query_db.py` at repo root to inspect SQLite data used by the server/Android app.
+  - Usage examples:
+    - List recent events (default DB path):
+      - `./query_db.py events --limit 50 --desc`
+    - Filter by type and time window (ISO or epoch):
+      - `./query_db.py events --type sleep --since 2025-09-01 --until 2025-09-30 --json`
+    - Point at a specific DB file:
+      - `./query_db.py --db-path /home/blasky/Projects/contentedest-baby/server/data.db counts`
+    - List devices:
+      - `./query_db.py devices --enabled`
+  - Honors `TCB_DB_PATH` environment variable (same as server). Prints counts and DB URL.
