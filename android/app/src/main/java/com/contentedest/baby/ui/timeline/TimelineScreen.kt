@@ -191,7 +191,7 @@ fun VerticalTimelineWithBars(
             // Hour label
             Row(
                 modifier = Modifier
-                    .fillMaxWidth()
+            .fillMaxWidth()
                     .padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -209,7 +209,7 @@ fun VerticalTimelineWithBars(
                 
                 // Timeline bar area
                 Box(
-                    modifier = Modifier
+                        modifier = Modifier
                         .weight(1f)
                         .height(32.dp)
                         .background(
@@ -668,9 +668,13 @@ fun TimePickerDialog(
     onTimeSelected: (LocalDateTime) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var selectedHour by remember { mutableStateOf(initialTime.hour) }
-    var selectedMinute by remember { mutableStateOf(initialTime.minute) }
-    var isAM by remember { mutableStateOf(initialTime.hour < 12) }
+    val timePickerState = remember {
+        TimePickerState(
+            initialHour = initialTime.hour,
+            initialMinute = initialTime.minute,
+            is24Hour = false
+        )
+    }
     
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -686,86 +690,7 @@ fun TimePickerDialog(
                     style = MaterialTheme.typography.headlineSmall
                 )
                 
-                // Custom time picker with better layout
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Hour picker
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Hour", style = MaterialTheme.typography.titleMedium)
-                        OutlinedTextField(
-                            value = selectedHour.toString(),
-                            onValueChange = { 
-                                val hour = it.toIntOrNull() ?: 1
-                                selectedHour = hour.coerceIn(1, 12)
-                            },
-                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
-                            ),
-                            singleLine = true,
-                            modifier = Modifier.width(80.dp)
-                        )
-                    }
-                    
-                    Text(":", style = MaterialTheme.typography.headlineLarge)
-                    
-                    // Minute picker
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Minute", style = MaterialTheme.typography.titleMedium)
-                        OutlinedTextField(
-                            value = selectedMinute.toString().padStart(2, '0'),
-                            onValueChange = { 
-                                val minute = it.toIntOrNull() ?: 0
-                                selectedMinute = minute.coerceIn(0, 59)
-                            },
-                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
-                            ),
-                            singleLine = true,
-                            modifier = Modifier.width(80.dp)
-                        )
-                    }
-                    
-                    // AM/PM picker
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Period", style = MaterialTheme.typography.titleMedium)
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            FilterChip(
-                                selected = isAM,
-                                onClick = { isAM = true },
-                                label = { 
-                                    Text(
-                                        "AM",
-                                        style = MaterialTheme.typography.bodyMedium
-                                    ) 
-                                }
-                            )
-                            FilterChip(
-                                selected = !isAM,
-                                onClick = { isAM = false },
-                                label = { 
-                                    Text(
-                                        "PM",
-                                        style = MaterialTheme.typography.bodyMedium
-                                    ) 
-                                }
-                            )
-                        }
-                    }
-                }
+                TimePicker(state = timePickerState)
                 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -779,17 +704,12 @@ fun TimePickerDialog(
                     }
                     Button(
                         onClick = {
-                            val hour24 = if (isAM) {
-                                if (selectedHour == 12) 0 else selectedHour
-                            } else {
-                                if (selectedHour == 12) 12 else selectedHour + 12
-                            }
                             val selectedTime = LocalDateTime.of(
                                 initialTime.year,
                                 initialTime.month,
                                 initialTime.dayOfMonth,
-                                hour24,
-                                selectedMinute
+                                timePickerState.hour,
+                                timePickerState.minute
                             )
                             onTimeSelected(selectedTime)
                         },
