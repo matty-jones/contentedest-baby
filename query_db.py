@@ -69,6 +69,7 @@ def as_dict_event(ev: Event) -> Dict[str, Any]:
     return {
         "event_id": ev.event_id,
         "type": ev.type,
+        "details": ev.details,  # New field
         "payload": ev.payload,
         "start_ts": ev.start_ts,
         "end_ts": ev.end_ts,
@@ -140,7 +141,7 @@ def command_events(args: argparse.Namespace) -> int:
             for ev in rows:
                 d = as_dict_event(ev)
                 print(
-                    f"{d['event_id']}  {d['type']:<6}  dev={d['device_id']:<12} deleted={d['deleted']}  "
+                    f"{d['event_id']}  {d['type']:<6}  details={d['details']:<10}  dev={d['device_id']:<12} deleted={d['deleted']}  "
                     f"ts={d['at']}  start={d['start']}  end={d['end']}  v={d['version']}  clk={d['server_clock']}"
                 )
         return 0

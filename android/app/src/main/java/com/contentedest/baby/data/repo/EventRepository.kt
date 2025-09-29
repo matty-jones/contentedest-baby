@@ -199,6 +199,7 @@ class EventRepository(
         return EventDto(
             eventId = event_id,
             type = type.name,
+            details = details,  // Include details field
             payload = payloadMap,
             startTs = start_ts,
             endTs = end_ts,
@@ -260,6 +261,7 @@ class EventRepository(
         return EventEntity(
             event_id = eventId,
             type = EventType.valueOf(type),
+            details = details,  // Include details field
             payload = payloadMap.takeIf { it.isNotEmpty() }?.toString(), // Convert Map to String
             start_ts = startTs,
             end_ts = endTs,

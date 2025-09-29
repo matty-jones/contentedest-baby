@@ -20,6 +20,7 @@ class Event(Base):
 
     event_id: Mapped[str] = mapped_column(String, primary_key=True)
     type: Mapped[str] = mapped_column(String, nullable=False)
+    details: Mapped[str | None] = mapped_column(String, nullable=True)  # New field for Details from CSV
     payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     start_ts: Mapped[int | None] = mapped_column(Integer, nullable=True)
     end_ts: Mapped[int | None] = mapped_column(Integer, nullable=True)

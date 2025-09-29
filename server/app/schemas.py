@@ -17,6 +17,7 @@ class PairResponse(BaseModel):
 class EventDTO(BaseModel):
     event_id: str
     type: Literal["sleep", "feed", "nappy"]
+    details: Optional[str] = None  # New field for Details from CSV
     payload: Optional[dict] = None
     start_ts: Optional[int] = None
     end_ts: Optional[int] = None

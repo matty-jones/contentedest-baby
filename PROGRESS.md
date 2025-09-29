@@ -45,3 +45,18 @@ Date: 2025-09-19
     - List devices:
       - `./query_db.py devices --enabled`
   - Honors `TCB_DB_PATH` environment variable (same as server). Prints counts and DB URL.
+
+## Database Schema Update (2025-09-29)
+
+- **Problem**: CSV data had 1,527 duplicate records out of 4,311 total rows, and the `Details` field was not being stored in the database.
+- **Solution**: 
+  - Created `migrate_database.py` script that wipes and recreates the database with unique records only
+  - Added `details` field to both server and Android schemas to store the Details column from CSV
+  - Updated server models, schemas, and API endpoints to handle the new field
+  - Updated Android Room entities, DAOs, and repository to match the new schema
+  - Database version bumped from 1 to 2 for Android Room
+- **Results**: 
+  - Database now contains 2,673 unique events (down from 4,193 with duplicates)
+  - Details field properly stores values like "Crib", "SNOO", "L", "R", "Wet", etc.
+  - No more duplicate data issues
+  - Both server and Android app now handle the complete CSV schema

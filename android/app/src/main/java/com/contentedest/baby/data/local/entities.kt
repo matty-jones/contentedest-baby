@@ -22,6 +22,9 @@ data class EventEntity(
     val deleted: Boolean = false,
     val type: EventType,
 
+    // Details field from CSV (e.g., "Crib", "L", "R", "Wet", "SNOO")
+    val details: String? = null,
+
     // Sleep
     val start_ts: Long? = null,
     val end_ts: Long? = null,

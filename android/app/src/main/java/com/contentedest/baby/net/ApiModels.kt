@@ -23,6 +23,7 @@ data class Healthz(val status: String)
 data class EventDto(
     @Json(name = "event_id") val eventId: String,
     val type: String,
+    val details: String? = null,  // New field for Details from CSV
     val payload: Map<String, Any>? = null,
     @Json(name = "start_ts") val startTs: Long? = null,
     @Json(name = "end_ts") val endTs: Long? = null,

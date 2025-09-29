@@ -203,6 +203,7 @@ def sync_push(items: list[EventDTO], db: Session = Depends(get_db), device: Devi
         incoming.append(Event(
             event_id=dto.event_id,
             type=dto.type,
+            details=dto.details,  # Include details field
             payload=dto.payload,
             start_ts=dto.start_ts,
             end_ts=dto.end_ts,
@@ -222,6 +223,7 @@ def sync_push(items: list[EventDTO], db: Session = Depends(get_db), device: Devi
             event=EventDTO(
                 event_id=ev.event_id,
                 type=ev.type,
+                details=ev.details,  # Include details field
                 payload=ev.payload,
                 start_ts=ev.start_ts,
                 end_ts=ev.end_ts,
@@ -245,6 +247,7 @@ def sync_pull(since: int = 0, db: Session = Depends(get_db), device: Device = De
         EventDTO(
             event_id=ev.event_id,
             type=ev.type,
+            details=ev.details,  # Include details field
             payload=ev.payload,
             start_ts=ev.start_ts,
             end_ts=ev.end_ts,
