@@ -216,6 +216,10 @@ fun VerticalTimelineWithBars(
                             Color.Gray.copy(alpha = 0.1f),
                             MaterialTheme.shapes.small
                         )
+                        .clickable {
+                            val time = getTimeForHour(displayHour, currentDate)
+                            onTimeClick(time)
+                        }
                 ) {
                     // Draw hour markers
                     Canvas(modifier = Modifier.fillMaxSize()) {
