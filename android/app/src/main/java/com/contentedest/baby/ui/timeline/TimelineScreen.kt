@@ -3,14 +3,24 @@ package com.contentedest.baby.ui.timeline
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.*
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.TimePickerState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,8 +29,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.contentedest.baby.data.local.EventEntity
 import com.contentedest.baby.data.local.EventType
+import com.contentedest.baby.data.local.FeedMode
 import com.contentedest.baby.data.repo.EventRepository
 import com.contentedest.baby.domain.TimeRules
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -62,6 +74,10 @@ fun TimelineScreen(
 
     // UI State for details dialog
     var selectedEvent by remember { mutableStateOf<EventEntity?>(null) }
+    
+    // UI State for add event dialog
+    var showAddEventDialog by remember { mutableStateOf(false) }
+    var selectedTime by remember { mutableStateOf<LocalDateTime?>(null) }
 
     // Define event colors
     val eventColors = mapOf(
@@ -109,6 +125,10 @@ fun TimelineScreen(
                 currentDate = currentDate,
                 eventColors = eventColors,
                 onEventClick = { selectedEvent = it },
+                onTimeClick = { time ->
+                    selectedTime = time
+                    showAddEventDialog = true
+                },
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -120,6 +140,27 @@ fun TimelineScreen(
                 onDismiss = { selectedEvent = null }
             )
         }
+        
+        // Add event dialog
+        if (showAddEventDialog && selectedTime != null) {
+            AddEventDialog(
+                initialTime = selectedTime!!,
+                currentDate = currentDate,
+                eventRepository = eventRepository,
+                onDismiss = { 
+                    showAddEventDialog = false
+                    selectedTime = null
+                },
+                onEventCreated = {
+                    showAddEventDialog = false
+                    selectedTime = null
+                    // Reload events
+                    scope.launch {
+                        vm.load(currentDate)
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -129,6 +170,7 @@ fun VerticalTimelineWithBars(
     currentDate: LocalDate,
     eventColors: Map<EventType, Color>,
     onEventClick: (EventEntity) -> Unit,
+    onTimeClick: (LocalDateTime) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val sortedEvents = events.sortedBy { it.start_ts ?: it.ts ?: 0L }
@@ -156,7 +198,13 @@ fun VerticalTimelineWithBars(
                 Text(
                     text = formatHour(displayHour),
                     style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.width(60.dp)
+                    modifier = Modifier
+                        .width(60.dp)
+                        .clickable {
+                            val time = getTimeForHour(displayHour, currentDate)
+                            onTimeClick(time)
+                        }
+                        .padding(vertical = 4.dp)
                 )
                 
                 // Timeline bar area
@@ -380,5 +428,559 @@ fun getHourStart(hour: Int, currentDate: LocalDate): Long {
         hour >= 7 -> dayStart + (hour - 7) * 3600L // 7am-11pm same day
         hour < 7 -> dayStart + (24 - 7 + hour) * 3600L // 12am-6am next day
         else -> dayStart
+    }
+}
+
+fun getTimeForHour(hour: Int, currentDate: LocalDate): LocalDateTime {
+    return when {
+        hour >= 7 -> currentDate.atTime(hour, 0) // 7am-11pm same day
+        hour < 7 -> currentDate.plusDays(1).atTime(hour, 0) // 12am-6am next day
+        else -> currentDate.atTime(7, 0)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddEventDialog(
+    initialTime: LocalDateTime,
+    currentDate: LocalDate,
+    eventRepository: EventRepository,
+    onDismiss: () -> Unit,
+    onEventCreated: () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    var selectedEventType by remember { mutableStateOf<EventType?>(null) }
+    var selectedDetails by remember { mutableStateOf<String?>(null) }
+    var startTime by remember { mutableStateOf(initialTime) }
+    var endTime by remember { mutableStateOf(initialTime.plusMinutes(30)) }
+    var durationHours by remember { mutableStateOf(0) }
+    var durationMinutes by remember { mutableStateOf(30) }
+    var showStartTimePicker by remember { mutableStateOf(false) }
+    var showEndTimePicker by remember { mutableStateOf(false) }
+    var showDurationPicker by remember { mutableStateOf(false) }
+    
+    // Update duration when end time changes
+    LaunchedEffect(endTime) {
+        val duration = java.time.Duration.between(startTime, endTime)
+        durationHours = duration.toHours().toInt()
+        durationMinutes = (duration.toMinutes() % 60).toInt()
+    }
+    
+    // Update end time when duration changes
+    LaunchedEffect(durationHours, durationMinutes) {
+        endTime = startTime.plusHours(durationHours.toLong()).plusMinutes(durationMinutes.toLong())
+    }
+    
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Add Event",
+                    style = MaterialTheme.typography.headlineSmall
+                )
+                
+                // Event Type Selection
+                Text(
+                    text = "Event Type",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    EventType.values().forEach { type ->
+                        FilterChip(
+                            selected = selectedEventType == type,
+                            onClick = { 
+                                selectedEventType = type
+                                selectedDetails = null // Reset details when type changes
+                            },
+                            label = { Text(type.name.replaceFirstChar { it.uppercase() }) }
+                        )
+                    }
+                }
+                
+                // Event Details Selection (only show if event type is selected)
+                if (selectedEventType != null) {
+                    Text(
+                        text = "Details",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(getDetailsForEventType(selectedEventType!!)) { detail ->
+                            FilterChip(
+                                selected = selectedDetails == detail,
+                                onClick = { 
+                                    selectedDetails = detail
+                                    // Set smart duration defaults for nappy events
+                                    if (selectedEventType == EventType.nappy) {
+                                        val (hours, minutes) = getNappyDuration(detail)
+                                        durationHours = hours
+                                        durationMinutes = minutes
+                                    }
+                                },
+                                label = { 
+                                    Text(
+                                        text = detail,
+                                        style = MaterialTheme.typography.bodySmall
+                                    ) 
+                                }
+                            )
+                        }
+                    }
+                }
+                
+                // Start Time
+                Text(
+                    text = "Start Time",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                OutlinedButton(
+                    onClick = { showStartTimePicker = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(formatTimeForDisplay(startTime))
+                }
+                
+                // End Time and Duration (side by side)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // End Time
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "End Time",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        OutlinedButton(
+                            onClick = { showEndTimePicker = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(formatTimeForDisplay(endTime))
+                        }
+                    }
+                    
+                    // Duration
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Duration",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        OutlinedButton(
+                            onClick = { showDurationPicker = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(formatDurationDisplay(durationHours, durationMinutes))
+                        }
+                    }
+                }
+                
+                // Action Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Cancel")
+                    }
+                    Button(
+                        onClick = {
+                            // Create the event
+                            scope.launch {
+                                createEvent(
+                                    eventType = selectedEventType!!,
+                                    details = selectedDetails,
+                                    startTime = startTime,
+                                    endTime = endTime,
+                                    eventRepository = eventRepository
+                                )
+                                onEventCreated()
+                            }
+                        },
+                        enabled = selectedEventType != null,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "Create",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+            }
+        }
+    }
+    
+    // Time Pickers
+    if (showStartTimePicker) {
+        TimePickerDialog(
+            initialTime = startTime,
+            onTimeSelected = { 
+                startTime = it
+                showStartTimePicker = false
+            },
+            onDismiss = { showStartTimePicker = false }
+        )
+    }
+    
+    if (showEndTimePicker) {
+        TimePickerDialog(
+            initialTime = endTime,
+            onTimeSelected = { 
+                endTime = it
+                showEndTimePicker = false
+            },
+            onDismiss = { showEndTimePicker = false }
+        )
+    }
+    
+    if (showDurationPicker) {
+        DurationPickerDialog(
+            initialHours = durationHours,
+            initialMinutes = durationMinutes,
+            onDurationSelected = { hours, minutes ->
+                durationHours = hours
+                durationMinutes = minutes
+                showDurationPicker = false
+            },
+            onDismiss = { showDurationPicker = false }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TimePickerDialog(
+    initialTime: LocalDateTime,
+    onTimeSelected: (LocalDateTime) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selectedHour by remember { mutableStateOf(initialTime.hour) }
+    var selectedMinute by remember { mutableStateOf(initialTime.minute) }
+    var isAM by remember { mutableStateOf(initialTime.hour < 12) }
+    
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier.padding(16.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Select Time",
+                    style = MaterialTheme.typography.headlineSmall
+                )
+                
+                // Custom time picker with better layout
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Hour picker
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Hour", style = MaterialTheme.typography.titleMedium)
+                        OutlinedTextField(
+                            value = selectedHour.toString(),
+                            onValueChange = { 
+                                val hour = it.toIntOrNull() ?: 1
+                                selectedHour = hour.coerceIn(1, 12)
+                            },
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                            ),
+                            singleLine = true,
+                            modifier = Modifier.width(80.dp)
+                        )
+                    }
+                    
+                    Text(":", style = MaterialTheme.typography.headlineLarge)
+                    
+                    // Minute picker
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Minute", style = MaterialTheme.typography.titleMedium)
+                        OutlinedTextField(
+                            value = selectedMinute.toString().padStart(2, '0'),
+                            onValueChange = { 
+                                val minute = it.toIntOrNull() ?: 0
+                                selectedMinute = minute.coerceIn(0, 59)
+                            },
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                            ),
+                            singleLine = true,
+                            modifier = Modifier.width(80.dp)
+                        )
+                    }
+                    
+                    // AM/PM picker
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Period", style = MaterialTheme.typography.titleMedium)
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = isAM,
+                                onClick = { isAM = true },
+                                label = { 
+                                    Text(
+                                        "AM",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    ) 
+                                }
+                            )
+                            FilterChip(
+                                selected = !isAM,
+                                onClick = { isAM = false },
+                                label = { 
+                                    Text(
+                                        "PM",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    ) 
+                                }
+                            )
+                        }
+                    }
+                }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Cancel")
+                    }
+                    Button(
+                        onClick = {
+                            val hour24 = if (isAM) {
+                                if (selectedHour == 12) 0 else selectedHour
+                            } else {
+                                if (selectedHour == 12) 12 else selectedHour + 12
+                            }
+                            val selectedTime = LocalDateTime.of(
+                                initialTime.year,
+                                initialTime.month,
+                                initialTime.dayOfMonth,
+                                hour24,
+                                selectedMinute
+                            )
+                            onTimeSelected(selectedTime)
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("OK")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DurationPickerDialog(
+    initialHours: Int,
+    initialMinutes: Int,
+    onDurationSelected: (Int, Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var hours by remember { mutableStateOf(initialHours) }
+    var minutes by remember { mutableStateOf(initialMinutes) }
+    var hoursText by remember { mutableStateOf(initialHours.toString()) }
+    var minutesText by remember { mutableStateOf(initialMinutes.toString()) }
+    var hoursFocused by remember { mutableStateOf(false) }
+    var minutesFocused by remember { mutableStateOf(false) }
+    
+    val hoursFocusRequester = remember { FocusRequester() }
+    val minutesFocusRequester = remember { FocusRequester() }
+    
+    // Sync text fields when values change externally
+    LaunchedEffect(initialHours, initialMinutes) {
+        if (!hoursFocused) {
+            hoursText = initialHours.toString()
+            hours = initialHours
+        }
+        if (!minutesFocused) {
+            minutesText = initialMinutes.toString()
+            minutes = initialMinutes
+        }
+    }
+    
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier.padding(16.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Select Duration",
+                    style = MaterialTheme.typography.headlineSmall
+                )
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Hours")
+                        OutlinedTextField(
+                            value = hoursText,
+                            onValueChange = { 
+                                hoursText = it
+                                hours = it.toIntOrNull() ?: 0
+                            },
+                            modifier = Modifier
+                                .focusRequester(hoursFocusRequester)
+                                .onFocusChanged { focusState ->
+                                    hoursFocused = focusState.isFocused
+                                    if (focusState.isFocused) {
+                                        hoursText = ""
+                                    }
+                                },
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                            ),
+                            singleLine = true
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Minutes")
+                        OutlinedTextField(
+                            value = minutesText,
+                            onValueChange = { 
+                                minutesText = it
+                                minutes = it.toIntOrNull() ?: 0
+                            },
+                            modifier = Modifier
+                                .focusRequester(minutesFocusRequester)
+                                .onFocusChanged { focusState ->
+                                    minutesFocused = focusState.isFocused
+                                    if (focusState.isFocused) {
+                                        minutesText = ""
+                                    }
+                                },
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                            ),
+                            singleLine = true
+                        )
+                    }
+                }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Cancel")
+                    }
+                    Button(
+                        onClick = {
+                            // Use the current values from text fields
+                            val finalHours = hoursText.toIntOrNull() ?: 0
+                            val finalMinutes = minutesText.toIntOrNull() ?: 0
+                            onDurationSelected(finalHours, finalMinutes)
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("OK")
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Helper functions
+fun getDetailsForEventType(eventType: EventType): List<String> {
+    return when (eventType) {
+        EventType.sleep -> listOf("Crib", "Arms", "Stroller")
+        EventType.feed -> listOf("L&R*", "L", "R", "L&R*", "Bottle", "Solids")
+        EventType.nappy -> listOf("Dirty", "Wet", "Mixed")
+    }
+}
+
+fun formatTimeForDisplay(time: LocalDateTime): String {
+    val hour = if (time.hour == 0) 12 else if (time.hour > 12) time.hour - 12 else time.hour
+    val period = if (time.hour < 12) "AM" else "PM"
+    return "$hour:${time.minute.toString().padStart(2, '0')} $period"
+}
+
+fun formatDurationDisplay(hours: Int, minutes: Int): String {
+    return when {
+        hours > 0 && minutes > 0 -> "${hours}h ${minutes}m"
+        hours > 0 -> "${hours}h"
+        minutes > 0 -> "${minutes}m"
+        else -> "0m"
+    }
+}
+
+fun getNappyDuration(detail: String): Pair<Int, Int> {
+    return when (detail) {
+        "Dirty" -> Pair(0, 5) // 5 minutes
+        "Wet" -> Pair(0, 3)   // 3 minutes
+        "Mixed" -> Pair(0, 4) // 4 minutes
+        else -> Pair(0, 5)    // Default 5 minutes
+    }
+}
+
+suspend fun createEvent(
+    eventType: EventType,
+    details: String?,
+    startTime: LocalDateTime,
+    endTime: LocalDateTime,
+    eventRepository: EventRepository
+) {
+    val deviceId = "device-${System.currentTimeMillis()}" // TODO: Get actual device ID
+    val startTimestamp = startTime.atZone(ZoneId.systemDefault()).toEpochSecond()
+    val endTimestamp = endTime.atZone(ZoneId.systemDefault()).toEpochSecond()
+    
+    when (eventType) {
+        EventType.sleep -> {
+            eventRepository.createSleep(startTimestamp, deviceId, details)
+        }
+        EventType.feed -> {
+            val feedMode = when (details) {
+                "Bottle" -> FeedMode.bottle
+                "Solids" -> FeedMode.solids
+                else -> FeedMode.breast
+            }
+            eventRepository.startFeed(startTimestamp, deviceId, feedMode, details)
+        }
+        EventType.nappy -> {
+            eventRepository.createNappy(startTimestamp, deviceId, details ?: "Unknown", null)
+        }
     }
 }
