@@ -9,3 +9,7 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 TEMP
+.vscode
+*.db*
+*.patch
+*.backup

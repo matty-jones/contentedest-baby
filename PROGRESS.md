@@ -60,3 +60,16 @@ Date: 2025-09-19
   - Details field properly stores values like "Crib", "SNOO", "L", "R", "Wet", etc.
   - No more duplicate data issues
   - Both server and Android app now handle the complete CSV schema
+
+## Android UI Fix (2025-09-29)
+
+- **Problem**: Feed events showed "Type: Feed (Unknown)" and missing details like "L&R*" in the Android UI
+- **Root Cause**: 
+  - Server was correctly sending `details: "L&R*"` in EventDTO
+  - Android conversion logic was only looking in `payload` field for feed mode
+  - UI was only checking `feed_mode` field, not the `details` field
+- **Solution**:
+  - Updated `EventRepository.toEntity()` to check `details` field first, then fall back to payload
+  - Updated `formatEventType()` in both TimelineScreen and DailyLogScreen to use `details` field when `feed_mode` is null
+  - Now properly displays "Type: Feed (Breast)" and "Details: L&R*" for synced events
+- **Files Updated**: EventRepository.kt, TimelineScreen.kt, DailyLogScreen.kt

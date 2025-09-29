@@ -217,11 +217,20 @@ class EventRepository(
         // Parse payload Map<String, Any> to extract fields
         val payloadMap = payload ?: emptyMap()
 
-        // Extract values from payload map - handle both new format and legacy server format
+        // Extract values from payload map and details field - handle both new format and legacy server format
         val feedMode = try {
             // Try new format first
             (payloadMap["mode"] as? String)?.let { FeedMode.valueOf(it) }
-                ?: // Try legacy server format - extract from details
+                ?: // Try details field from server
+                details?.let { detailsValue ->
+                    when {
+                        detailsValue.contains("L&R") -> FeedMode.breast
+                        detailsValue.contains("Bottle") -> FeedMode.bottle
+                        detailsValue.contains("Solids") -> FeedMode.solids
+                        else -> null
+                    }
+                }
+                ?: // Try legacy server format - extract from payload
                 (payloadMap["details"] as? String)?.let { details ->
                     when {
                         details.contains("L&R") -> FeedMode.breast
@@ -251,6 +260,8 @@ class EventRepository(
         val nappyType = try {
             // Try new format first
             (payloadMap["nappy_type"] as? String)
+                ?: // Try details field from server
+                details
                 ?: // Try legacy server format
                 (payloadMap["details"] as? String)
         } catch (e: Exception) { null }
@@ -284,11 +295,11 @@ class EventRepository(
         val writer = StringWriter()
 
         // CSV Header
-        writer.append("event_id,type,start_ts,end_ts,ts,created_ts,updated_ts,version,deleted,device_id,note,feed_mode,bottle_amount_ml,solids_amount,nappy_type\n")
+        writer.append("event_id,type,details,start_ts,end_ts,ts,created_ts,updated_ts,version,deleted,device_id,note,feed_mode,bottle_amount_ml,solids_amount,nappy_type\n")
 
         // CSV Rows
         for (event in allEvents) {
-            writer.append("${event.event_id},${event.type.name},${event.start_ts ?: ""},${event.end_ts ?: ""},${event.ts ?: ""},${event.created_ts},${event.updated_ts},${event.version},${event.deleted},${event.device_id},${event.note ?: ""},${event.feed_mode?.name ?: ""},${event.bottle_amount_ml ?: ""},${event.solids_amount ?: ""},${event.nappy_type ?: ""}\n")
+            writer.append("${event.event_id},${event.type.name},${event.details ?: ""},${event.start_ts ?: ""},${event.end_ts ?: ""},${event.ts ?: ""},${event.created_ts},${event.updated_ts},${event.version},${event.deleted},${event.device_id},${event.note ?: ""},${event.feed_mode?.name ?: ""},${event.bottle_amount_ml ?: ""},${event.solids_amount ?: ""},${event.nappy_type ?: ""}\n")
         }
 
         writer.toString()
@@ -300,6 +311,7 @@ class EventRepository(
             mapOf(
                 "event_id" to event.event_id,
                 "type" to event.type.name,
+                "details" to event.details,
                 "start_ts" to event.start_ts,
                 "end_ts" to event.end_ts,
                 "ts" to event.ts,
@@ -326,5 +338,4 @@ class EventRepository(
         mapAdapter.toJson(exportData)
     }
 }
-
 

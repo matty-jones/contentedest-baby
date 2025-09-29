@@ -302,14 +302,12 @@ fun EventDetailsDialog(
 ) {
     val detail = buildString {
         // Type with mode
-        append("Type: ").append(formatEventType(event)).append('\n')
+        append("Type: ").append(formatEventTypeForDetails(event)).append('\n')
         
-        // Details from payload
-        if (event.payload != null) {
-            val details = extractDetailsFromPayload(event.payload)
-            if (details.isNotEmpty()) {
-                append("Details: ").append(details).append('\n')
-            }
+        // Details
+        val details = formatEventDetails(event)
+        if (details.isNotEmpty()) {
+            append("Details: ").append(details).append('\n')
         }
         
         // Start time
@@ -377,12 +375,21 @@ fun formatTime(timestamp: Long): String {
 }
 
 fun formatDuration(seconds: Long): String {
-    val minutes = seconds / 60
+    val hours = seconds / 3600
+    val minutes = (seconds % 3600) / 60
     val remainingSeconds = seconds % 60
-    return if (minutes > 0) {
-        "${minutes}m${if (remainingSeconds > 0) " ${remainingSeconds}s" else ""}"
-    } else {
-        "${remainingSeconds}s"
+    
+    return when {
+        hours > 0 -> {
+            val minutesText = if (minutes > 0) " ${minutes}m" else ""
+            val secondsText = if (remainingSeconds > 0) " ${remainingSeconds}s" else ""
+            "${hours}h$minutesText$secondsText"
+        }
+        minutes > 0 -> {
+            val secondsText = if (remainingSeconds > 0) " ${remainingSeconds}s" else ""
+            "${minutes}m$secondsText"
+        }
+        else -> "${remainingSeconds}s"
     }
 }
 
@@ -902,5 +909,33 @@ suspend fun createEvent(
         EventType.nappy -> {
             eventRepository.createNappy(startTimestamp, deviceId, details ?: "Unknown", null)
         }
+    }
+}
+
+fun formatEventTypeForDetails(event: EventEntity): String {
+    return event.type.name.replaceFirstChar { it.uppercase() }
+}
+
+fun formatEventDetails(event: EventEntity): String {
+    return when (event.type) {
+        EventType.feed -> {
+            val mode = event.feed_mode?.name?.replaceFirstChar { it.uppercase() } 
+                ?: event.details?.let { details ->
+                    when {
+                        details.contains("L&R") -> "Breast"
+                        details.contains("Bottle") -> "Bottle"
+                        details.contains("Solids") -> "Solids"
+                        else -> details
+                    }
+                } ?: "Unknown"
+            val details = event.details ?: ""
+            if (details.isNotEmpty() && mode != details) {
+                "$mode, $details"
+            } else {
+                mode
+            }
+        }
+        EventType.nappy -> event.nappy_type ?: event.details ?: "Unknown"
+        EventType.sleep -> event.details ?: "Unknown"
     }
 }

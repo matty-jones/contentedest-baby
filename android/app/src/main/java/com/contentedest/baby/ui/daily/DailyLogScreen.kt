@@ -255,7 +255,15 @@ fun EventItem(
         }
         EventType.feed -> {
             val time = formatTime(event.ts ?: event.start_ts ?: 0)
-            val mode = event.feed_mode?.name?.replaceFirstChar { it.uppercase() } ?: "Unknown"
+            val mode = event.feed_mode?.name?.replaceFirstChar { it.uppercase() } 
+                ?: event.details?.let { details ->
+                    when {
+                        details.contains("L&R") -> "Breast"
+                        details.contains("Bottle") -> "Bottle"
+                        details.contains("Solids") -> "Solids"
+                        else -> details
+                    }
+                } ?: "Unknown"
             val duration = if (event.end_ts != null && event.start_ts != null) {
                 val durationSeconds = event.end_ts - event.start_ts
                 val minutes = durationSeconds / 60
