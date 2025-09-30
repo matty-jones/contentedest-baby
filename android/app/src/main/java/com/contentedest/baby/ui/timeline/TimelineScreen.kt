@@ -35,6 +35,7 @@ import com.contentedest.baby.data.local.EventType
 import com.contentedest.baby.data.local.FeedMode
 import com.contentedest.baby.data.repo.EventRepository
 import com.contentedest.baby.domain.TimeRules
+import com.contentedest.baby.ui.timeline.PolishedTimeline
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -111,7 +112,7 @@ fun TimelineScreen(
             )
         }
 
-        // Vertical timeline with horizontal event bars
+        // Snaking timeline
         val scrollState = rememberScrollState()
         
         Box(
@@ -120,7 +121,7 @@ fun TimelineScreen(
                 .verticalScroll(scrollState)
                 .padding(horizontal = 16.dp)
         ) {
-            VerticalTimelineWithBars(
+            PolishedTimeline(
                 events = events,
                 currentDate = currentDate,
                 eventColors = eventColors,
