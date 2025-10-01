@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.contentedest.baby.data.local.EventEntity
@@ -35,7 +36,7 @@ fun SmoothTimeline(
         val height = maxHeight
 
         // Create a smooth flowing timeline path
-        val timelinePath = createSmoothTimelinePath(width, height)
+        val timelinePath = with(LocalDensity.current) { createSmoothTimelinePath(width, height) }
 
         Canvas(modifier = Modifier.fillMaxSize()) {
             // Draw the main timeline path
@@ -75,7 +76,7 @@ fun SmoothTimeline(
     }
 }
 
-private fun createSmoothTimelinePath(width: androidx.compose.ui.unit.Dp, height: androidx.compose.ui.unit.Dp): Path {
+private fun androidx.compose.ui.unit.Density.createSmoothTimelinePath(width: androidx.compose.ui.unit.Dp, height: androidx.compose.ui.unit.Dp): Path {
     val path = Path()
     val widthPx = width.toPx()
     val heightPx = height.toPx()

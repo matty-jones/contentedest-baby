@@ -19,6 +19,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.contentedest.baby.data.local.EventEntity
 import com.contentedest.baby.data.local.EventType
 import java.time.LocalDate
@@ -70,7 +71,7 @@ fun PolishedTimeline(
                 val hourText = formatHour(hour)
                 val textStyle = TextStyle(
                     color = Color.Black,
-                    fontSize = 10.dp.toSp()
+                    fontSize = 10.sp
                 )
                 val textLayoutResult = textMeasurer.measure(hourText, textStyle)
                 drawText(

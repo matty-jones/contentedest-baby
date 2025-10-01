@@ -73,3 +73,31 @@ Date: 2025-09-19
   - Updated `formatEventType()` in both TimelineScreen and DailyLogScreen to use `details` field when `feed_mode` is null
   - Now properly displays "Type: Feed (Breast)" and "Details: L&R*" for synced events
 - **Files Updated**: EventRepository.kt, TimelineScreen.kt, DailyLogScreen.kt
+
+## Android Timeline compile fixes (2025-09-30)
+
+- Fixed unresolved `toPx` usage in `SmoothTimeline.kt` by making `createSmoothTimelinePath` a `Density`-scoped function and invoking it with `LocalDensity.current` from the composable. Added required import.
+- Fixed invalid `dp.toSp()` in `PolishedTimeline.kt` by switching to `10.sp`.
+- Verified other `toPx` usages occur within `Canvas`/`DrawScope` contexts where `Dp.toPx()` is valid.
+- Resolved build environment issues:
+  - Installed Java 17 via `brew install --cask temurin@17`
+  - Updated Gradle wrapper from 8.7 to 8.9 (required by AGP 8.7.2)
+  - Added Java toolchain configuration to app module's `build.gradle.kts`
+  - Build now succeeds: `./gradlew :app:assembleDebug` completes successfully
+- All `toPx` compilation errors resolved, Android app builds successfully.
+
+## Server bootstrap + CSV fallback (2025-10-01)
+
+- Implemented database bootstrap on startup: if active DB has 0 events, copy from committed `server/initial_data.db`.
+- Added CSV fallback: if still empty, seed from CSV resolved by `TCB_SEED_CSV` or first CSV under `TEMP/`.
+- Removed hardcoded external CSV path. Startup now robust across machines.
+- Created `server/initial_data.db` with 4,193 events (1,313 sleep, 2,426 feed, 454 nappy) from TEMP CSV.
+- Server conflict resolution: uses (version, updated_ts, device_id) comparison to prevent data loss.
+
+## Android immediate sync (2025-10-01)
+
+- Added `SyncWorker.scheduleImmediateSync()` for instant data loading on app open.
+- Updated `MainActivity` to trigger both immediate and periodic sync on startup/pairing.
+- Immediate sync uses `NetworkType.CONNECTED` constraint (less restrictive than periodic).
+- Server-side conflict resolution ensures Android events with higher version/timestamp win over initial data.
+- Sync flow: Android pushes local events → Server resolves conflicts → Android pulls server events.

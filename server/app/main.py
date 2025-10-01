@@ -5,8 +5,11 @@ import csv
 import os
 from pathlib import Path
 from fastapi import FastAPI, Depends, Request
+import shutil
+import glob
 from sqlalchemy.orm import Session
 from .database import Base, engine, SessionLocal
+from .database import DB_PATH as ACTIVE_DB_PATH
 from .models import Device, Event
 from .schemas import PairRequest, PairResponse, EventDTO, SyncPushResponse, SyncPushResponseItem, SyncPullResponse
 from .security import mint_token, token_hash
@@ -32,22 +35,83 @@ async def log_requests(request: Request, call_next):
 
 Base.metadata.create_all(bind=engine)
 
-# Seed database on startup
+def _active_db_file() -> str:
+    return os.path.abspath(ACTIVE_DB_PATH)
+
+
+def bootstrap_database_if_empty(db: Session) -> None:
+    """If active DB has 0 events, try to initialize it from a committed initial DB.
+
+    Looks for a file named 'initial_data.db' under the server directory (sibling to data.db).
+    If found and current DB has no events, copies it over the active DB file.
+    """
+    try:
+        current_count = db.query(Event).count()
+    except Exception:
+        current_count = 0
+
+    if current_count > 0:
+        logger.info("Database already contains events; skipping bootstrap from initial DB")
+        return
+
+    server_dir = os.path.dirname(os.path.dirname(__file__))
+    initial_db_path = os.path.join(server_dir, "initial_data.db")
+    if os.path.exists(initial_db_path):
+        active_path = _active_db_file()
+        try:
+            db.close()
+        except Exception:
+            pass
+        try:
+            # Replace active DB file with the initial one
+            shutil.copy2(initial_db_path, active_path)
+            logger.info(f"Bootstrapped active DB from initial DB: {initial_db_path}")
+        except Exception as e:
+            logger.error(f"Failed to copy initial DB to active DB: {e}")
+    else:
+        logger.info("No initial_data.db found; will attempt CSV seeding if configured")
+
+
+# Seed database on startup (bootstrap first, then CSV-seed as fallback)
 @app.on_event("startup")
 def startup_event():
-    """Seed database with sample data on startup."""
+    """Initialize database content on startup if empty.
+
+    Order:
+      1) If empty, try to copy from committed initial_data.db
+      2) If still empty, try to seed from CSV (TEMP or env-configured)
+    """
     db = SessionLocal()
     try:
-        seed_database(db)
+        bootstrap_database_if_empty(db)
+    finally:
+        db.close()
+
+    # Re-open a new session to check and possibly seed from CSV
+    db = SessionLocal()
+    try:
+        if db.query(Event).count() == 0:
+            seed_database(db)
     finally:
         db.close()
 
 def seed_database(db: Session):
-    """Seed the database with sample data from CSV file."""
-    csv_path = "/home/blasky/Projects/extractedest-baby/complete_historical_data/screenshot_processed_data_20250916_212254.csv"
+    """Seed the database with sample data from CSV file.
 
-    if not os.path.exists(csv_path):
-        logger.warning(f"CSV file not found at {csv_path}")
+    CSV path resolution order:
+      - Environment variable TCB_SEED_CSV
+      - Any CSV file under the repository TEMP directory
+    """
+    csv_path = os.environ.get("TCB_SEED_CSV")
+    if not csv_path:
+        # Look for any CSV under repo TEMP directory
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        candidates = glob.glob(os.path.join(repo_root, "TEMP", "*.csv"))
+        if candidates:
+            csv_path = candidates[0]
+
+    if not csv_path or not os.path.exists(csv_path):
+        logger.warning("CSV seed path not configured or file not found; skipping CSV seed")
         return
 
     # Check if database already has data

@@ -52,7 +52,9 @@ class MainActivity : ComponentActivity() {
                     if (isPaired.value) {
                         val deviceId = tokenStorage.getDeviceId() ?: "device-${System.currentTimeMillis()}"
                         
-                        // Schedule periodic sync (this will also trigger immediate sync if needed)
+                        // Schedule immediate sync for instant data loading
+                        SyncWorker.scheduleImmediateSync(this@MainActivity, deviceId)
+                        // Also schedule periodic sync for ongoing updates
                         SyncWorker.schedulePeriodicSync(this@MainActivity, deviceId)
                     }
                 }
@@ -89,7 +91,9 @@ class MainActivity : ComponentActivity() {
                                     isPaired.value = true
                                     val deviceId = tokenStorage.getDeviceId() ?: "device-${System.currentTimeMillis()}"
 
-                                    // Schedule periodic sync (this will also trigger immediate sync if needed)
+                                    // Schedule immediate sync for instant data loading
+                                    SyncWorker.scheduleImmediateSync(this@MainActivity, deviceId)
+                                    // Also schedule periodic sync for ongoing updates
                                     SyncWorker.schedulePeriodicSync(this@MainActivity, deviceId)
                                 }
                             }

@@ -87,6 +87,7 @@ class SyncWorker(
 
     companion object {
         const val WORK_NAME = "sync_work"
+        const val IMMEDIATE_SYNC_WORK_NAME = "immediate_sync_work"
 
         fun schedulePeriodicSync(context: Context, deviceId: String) {
             val constraints = Constraints.Builder()
@@ -102,6 +103,23 @@ class SyncWorker(
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 WORK_NAME,
                 ExistingPeriodicWorkPolicy.REPLACE,
+                workRequest
+            )
+        }
+
+        fun scheduleImmediateSync(context: Context, deviceId: String) {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+
+            val workRequest = OneTimeWorkRequestBuilder<SyncWorker>()
+                .setConstraints(constraints)
+                .setInputData(workDataOf("device_id" to deviceId))
+                .build()
+
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                IMMEDIATE_SYNC_WORK_NAME,
+                ExistingWorkPolicy.REPLACE,
                 workRequest
             )
         }
