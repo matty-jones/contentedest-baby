@@ -111,13 +111,11 @@ fun TimelineScreen(
             )
         }
 
-        // Vertical timeline with horizontal event bars
-        val scrollState = rememberScrollState()
-        
+        // Timeline canvas fills remaining space below the header
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(scrollState)
+                .weight(1f)
+                .fillMaxWidth()
                 .padding(horizontal = 16.dp)
         ) {
             SnakeTimeline(

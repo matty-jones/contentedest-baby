@@ -6,6 +6,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -19,7 +21,9 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun StatisticsScreen(
     vm: StatisticsViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onForceRepair: (() -> Unit)? = null,
+    onForceSync: (() -> Unit)? = null
 ) {
     val stats by vm.stats.collectAsState()
     val currentRange by vm.currentRange.collectAsState()
@@ -69,6 +73,68 @@ fun StatisticsScreen(
                             onClick = { vm.setRange(StatsRange.CUSTOM) },
                             label = { Text("Custom") }
                         )
+                    }
+                }
+            }
+
+            // Debug section (only show if debug functions are provided)
+            if (onForceRepair != null || onForceSync != null) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Settings,
+                                contentDescription = "Debug",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "Debug Options",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (onForceRepair != null) {
+                                Button(
+                                    onClick = onForceRepair,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Settings,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Force Re-pair")
+                                }
+                            }
+                            
+                            if (onForceSync != null) {
+                                Button(
+                                    onClick = onForceSync,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Refresh,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Force Sync")
+                                }
+                            }
+                        }
                     }
                 }
             }

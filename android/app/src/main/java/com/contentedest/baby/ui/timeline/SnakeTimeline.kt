@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -177,7 +178,7 @@ fun SnakeTimeline(
         }
     
         // ---- Bridge caps at row ends to hide white gaps when an event spans rows ----
-        val byEvent = segments.groupBy { it.event.id ?: it.event.hashCode() }
+        val byEvent = segments.groupBy { it.event.event_id }
         byEvent.values.forEach { segs ->
             val sorted = segs.sortedBy { it.rect.top } // row order top->bottom
             for (i in 0 until sorted.lastIndex) {
@@ -185,7 +186,7 @@ fun SnakeTimeline(
                 val b = sorted[i + 1]
                 if (a.event != b.event) continue
 
-                // If 'a' touches a row edge and 'b' touches the opposite edge, add a circle cap
+                // If 'a' and 'b' both touch the same row edge, add circular caps centered on each segment
                 val aRightEdge = kotlin.math.abs(a.rect.right - geom.right) < geom.trackThickness * 0.15f
                 val aLeftEdge  = kotlin.math.abs(a.rect.left  - geom.left)  < geom.trackThickness * 0.15f
                 val bRightEdge = kotlin.math.abs(b.rect.right - geom.right) < geom.trackThickness * 0.15f
@@ -194,16 +195,18 @@ fun SnakeTimeline(
                 val color = eventColors[a.event.type] ?: Color.LightGray
                 val radius = (a.rect.height / 2f)
 
+                fun rectCenterY(rect: Rect): Float = rect.top + rect.height / 2f
+
                 when {
                     aRightEdge && bRightEdge -> {
-                        // U-turn on the right side
-                        drawCircle(color, radius, Offset(geom.right, geom.rowCenters[(i % rows)]))
-                        drawCircle(color, radius, Offset(geom.right, geom.rowCenters[(i % rows) + 1]))
+                        val x = geom.right
+                        drawCircle(color, radius, Offset(x, rectCenterY(a.rect)))
+                        drawCircle(color, radius, Offset(x, rectCenterY(b.rect)))
                     }
                     aLeftEdge && bLeftEdge -> {
-                        // U-turn on the left side
-                        drawCircle(color, radius, Offset(geom.left, geom.rowCenters[(i % rows)]))
-                        drawCircle(color, radius, Offset(geom.left, geom.rowCenters[(i % rows) + 1]))
+                        val x = geom.left
+                        drawCircle(color, radius, Offset(x, rectCenterY(a.rect)))
+                        drawCircle(color, radius, Offset(x, rectCenterY(b.rect)))
                     }
                 }
             }

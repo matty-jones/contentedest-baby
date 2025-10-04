@@ -32,6 +32,31 @@ Date: 2025-09-19
 - Fixed SyncWorker constructor: Added back @AssistedInject and @Assisted annotations as required by @HiltWorker annotation.
 - Fixed SyncWorker constructor pattern: Reverted to correct @AssistedInject with @Assisted annotations as required by @HiltWorker annotation.
 
+### Android UI Timeline Fix (2025-10-04)
+
+- **Problem**: Build failed with unresolved reference `nativeCanvas` and wrong property `id` in `SnakeTimeline.kt`.
+- **Solution**:
+  - Added missing import `androidx.compose.ui.graphics.nativeCanvas`.
+  - Replaced `it.event.id` with `it.event.event_id` when grouping segments.
+- **Impact**: Android module now compiles successfully; timeline labels render via `drawIntoCanvas` without removing functionality.
+
+### Snake Timeline Rendering Fix (2025-10-04)
+
+- **Problem**: Snake timeline displayed no events despite repository returning events for the selected day.
+- **Root Cause**: Bridging cap logic used `geom.rowCenters[(i % rows) + 1]`, which could index out-of-bounds or produce invalid Y positions depending on segment sorting, disrupting draw state.
+- **Solution**:
+  - Group segments by `event_id` (already fixed earlier).
+  - Render bridge caps using each segment's rect centerY for Y positions instead of indexing `rowCenters`.
+- **Files Updated**: `android/app/src/main/java/com/contentedest/baby/ui/timeline/SnakeTimeline.kt`
+- **Result**: Timeline renders segments reliably. Build passes.
+
+### Timeline Layout Fix (2025-10-04)
+
+- **Problem**: Timeline content appeared as a 1px strip at the top; the canvas had effectively zero/incorrect height due to being inside a `verticalScroll` container.
+- **Solution**: Removed `verticalScroll` wrapper and gave the timeline container `weight(1f)` to occupy remaining screen space under the header.
+- **Files Updated**: `android/app/src/main/java/com/contentedest/baby/ui/timeline/TimelineScreen.kt`
+- **Result**: `SnakeTimeline` receives a finite height and renders full-size.
+
 ## Tooling
 
 - Added `query_db.py` at repo root to inspect SQLite data used by the server/Android app.
@@ -73,3 +98,19 @@ Date: 2025-09-19
   - Updated `formatEventType()` in both TimelineScreen and DailyLogScreen to use `details` field when `feed_mode` is null
   - Now properly displays "Type: Feed (Breast)" and "Details: L&R*" for synced events
 - **Files Updated**: EventRepository.kt, TimelineScreen.kt, DailyLogScreen.kt
+
+## Debug Menu Addition (2025-10-04)
+
+- **Problem**: User experiencing 401 Unauthorized errors and no data in app, suspected local database was cleared and needed way to force re-pairing and re-sync.
+- **Root Cause**: 
+  - Server has device "test" in database but Android app token may be invalid/expired
+  - Auth interceptor clears token storage on 401 responses, but no easy way to manually trigger re-pairing
+  - No immediate sync option for debugging
+- **Solution**:
+  - Added debug section to StatisticsScreen with "Force Re-pair" and "Force Sync" buttons
+  - Force Re-pair: Clears token storage and returns to pairing screen
+  - Force Sync: Triggers immediate sync using new `SyncWorker.triggerImmediateSync()` method
+  - Added `triggerImmediateSync()` method to SyncWorker for one-time sync operations
+  - Debug options only appear when functions are provided (clean UI for production)
+- **Files Updated**: StatisticsScreen.kt, MainActivity.kt, SyncWorker.kt
+- **Usage**: Access via menu (three dots) → Statistics → Debug Options section

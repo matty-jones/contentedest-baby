@@ -106,7 +106,21 @@ class MainActivity : ComponentActivity() {
                             ExportScreen(exportVm) { showExportScreen = false }
                         } else if (showStatisticsScreen) {
                             val statsVm: StatisticsViewModel = hiltViewModel()
-                            StatisticsScreen(statsVm) { showStatisticsScreen = false }
+                            StatisticsScreen(
+                                vm = statsVm,
+                                onNavigateBack = { showStatisticsScreen = false },
+                                onForceRepair = {
+                                    // Clear token storage to force re-pairing
+                                    tokenStorage.clear()
+                                    isPaired.value = false
+                                    showStatisticsScreen = false
+                                },
+                                onForceSync = {
+                                    // Force immediate sync
+                                    val deviceId = tokenStorage.getDeviceId() ?: "device-${System.currentTimeMillis()}"
+                                    SyncWorker.triggerImmediateSync(this@MainActivity, deviceId)
+                                }
+                            )
                         } else {
                             // Timeline as main screen
                             val timelineVm = remember { TimelineViewModel(eventRepository) }
