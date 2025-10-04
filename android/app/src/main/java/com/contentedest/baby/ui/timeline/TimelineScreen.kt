@@ -36,6 +36,9 @@ import com.contentedest.baby.data.local.FeedMode
 import com.contentedest.baby.data.repo.EventRepository
 import com.contentedest.baby.domain.TimeRules
 import com.contentedest.baby.ui.timeline.PolishedTimeline
+import com.contentedest.baby.ui.timeline.SmoothTimeline
+import com.contentedest.baby.ui.timeline.SnakingTimeline
+import com.contentedest.baby.ui.timeline.CircularTimeline
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -79,6 +82,9 @@ fun TimelineScreen(
     // UI State for add event dialog
     var showAddEventDialog by remember { mutableStateOf(false) }
     var selectedTime by remember { mutableStateOf<LocalDateTime?>(null) }
+    
+    // Timeline type selector
+    var selectedTimelineType by remember { mutableStateOf("Polished") }
 
     // Define event colors
     val eventColors = mapOf(
@@ -112,7 +118,24 @@ fun TimelineScreen(
             )
         }
 
-        // Snaking timeline
+        // Timeline type selector
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf("Polished", "Smooth", "Snaking", "Circular").forEach { timelineType ->
+                FilterChip(
+                    selected = selectedTimelineType == timelineType,
+                    onClick = { selectedTimelineType = timelineType },
+                    label = { Text(timelineType) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        // Timeline content
         val scrollState = rememberScrollState()
         
         Box(
@@ -121,17 +144,52 @@ fun TimelineScreen(
                 .verticalScroll(scrollState)
                 .padding(horizontal = 16.dp)
         ) {
-            PolishedTimeline(
-                events = events,
-                currentDate = currentDate,
-                eventColors = eventColors,
-                onEventClick = { selectedEvent = it },
-                onTimeClick = { time ->
-                    selectedTime = time
-                    showAddEventDialog = true
-                },
-                modifier = Modifier.fillMaxSize()
-            )
+            when (selectedTimelineType) {
+                "Polished" -> PolishedTimeline(
+                    events = events,
+                    currentDate = currentDate,
+                    eventColors = eventColors,
+                    onEventClick = { selectedEvent = it },
+                    onTimeClick = { time ->
+                        selectedTime = time
+                        showAddEventDialog = true
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+                "Smooth" -> SmoothTimeline(
+                    events = events,
+                    currentDate = currentDate,
+                    eventColors = eventColors,
+                    onEventClick = { selectedEvent = it },
+                    onTimeClick = { time ->
+                        selectedTime = time
+                        showAddEventDialog = true
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+                "Snaking" -> SnakingTimeline(
+                    events = events,
+                    currentDate = currentDate,
+                    eventColors = eventColors,
+                    onEventClick = { selectedEvent = it },
+                    onTimeClick = { time ->
+                        selectedTime = time
+                        showAddEventDialog = true
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+                "Circular" -> CircularTimeline(
+                    events = events,
+                    currentDate = currentDate,
+                    eventColors = eventColors,
+                    onEventClick = { selectedEvent = it },
+                    onTimeClick = { time ->
+                        selectedTime = time
+                        showAddEventDialog = true
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         }
 
         // Details dialog with proper formatting
