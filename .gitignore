@@ -13,3 +13,4 @@ TEMP
 *.db*
 *.patch
 *.backup
+*.swp

@@ -120,7 +120,7 @@ fun TimelineScreen(
                 .verticalScroll(scrollState)
                 .padding(horizontal = 16.dp)
         ) {
-            VerticalTimelineWithBars(
+            SnakeTimeline(
                 events = events,
                 currentDate = currentDate,
                 eventColors = eventColors,
@@ -160,96 +160,6 @@ fun TimelineScreen(
                     }
                 }
             )
-        }
-    }
-}
-
-@Composable
-fun VerticalTimelineWithBars(
-    events: List<EventEntity>,
-    currentDate: LocalDate,
-    eventColors: Map<EventType, Color>,
-    onEventClick: (EventEntity) -> Unit,
-    onTimeClick: (LocalDateTime) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val sortedEvents = events.sortedBy { it.start_ts ?: it.ts ?: 0L }
-    
-    Column(modifier = modifier) {
-        // Timeline header
-        Text(
-            text = "Timeline (7 AM - 7 AM)",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
-        
-        // Create hourly grid with event bars (7 AM to 6 AM next day)
-        for (hour in 7..30) { // 7 AM to 6 AM next day (30 = 6 AM next day)
-            val displayHour = if (hour >= 24) hour - 24 else hour
-            val hourEvents = getEventsForHour(sortedEvents, displayHour, currentDate)
-            
-            // Hour label
-            Row(
-                modifier = Modifier
-            .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = formatHour(displayHour),
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier
-                        .width(60.dp)
-                        .clickable {
-                            val time = getTimeForHour(displayHour, currentDate)
-                            onTimeClick(time)
-                        }
-                        .padding(vertical = 4.dp)
-                )
-                
-                // Timeline bar area
-                Box(
-                        modifier = Modifier
-                        .weight(1f)
-                        .height(32.dp)
-                        .background(
-                            Color.Gray.copy(alpha = 0.1f),
-                            MaterialTheme.shapes.small
-                        )
-                        .clickable {
-                            val time = getTimeForHour(displayHour, currentDate)
-                            onTimeClick(time)
-                        }
-                ) {
-                    // Draw hour markers
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val width = size.width
-                        val height = size.height
-                        
-                        // Draw vertical lines every 15 minutes (4 per hour)
-                        for (i in 0..4) {
-                            val x = (width / 4f) * i
-                            drawLine(
-                                color = Color.Gray.copy(alpha = 0.3f),
-                                start = Offset(x, 0f),
-                                end = Offset(x, height),
-                                strokeWidth = 1f
-                            )
-                        }
-                    }
-                    
-                    // Draw event bars
-                    hourEvents.forEach { event ->
-                        EventBar(
-                            event = event,
-                            eventColors = eventColors,
-                            onEventClick = onEventClick,
-                            hourStart = getHourStart(displayHour, currentDate),
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                }
-            }
         }
     }
 }
