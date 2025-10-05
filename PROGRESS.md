@@ -57,6 +57,17 @@ Date: 2025-09-19
 - **Files Updated**: `android/app/src/main/java/com/contentedest/baby/ui/timeline/TimelineScreen.kt`
 - **Result**: `SnakeTimeline` receives a finite height and renders full-size.
 
+### Live Event Add (2025-10-05)
+
+- Added FloatingActionButton to `TimelineScreen` to start live event creation.
+- Implemented `LiveEventPickerSheet` for selecting Sleep, Feeding, or Diaper.
+- Implemented `LiveSleepDialog`: play/pause timer, details (Crib/Arms/Stroller), shows start/end/duration, saves a sleep span.
+- Implemented `LiveFeedDialog`: two play/pause controls (Left/Right) with exclusive activation, builds segments list, shows totals, saves breast feed with segments.
+- Implemented `LiveNappyDialog`: quick selection of Wet/Dirty/Mixed, saves point event at current time.
+- Added repository helpers `insertSleepSpan` and `insertBreastFeed` to persist live events and segments.
+- Wired `deviceId` from `MainActivity` into `TimelineScreen` and down to dialogs for correct attribution.
+- All changes compile and pass lints locally.
+
 ## Tooling
 
 - Added `query_db.py` at repo root to inspect SQLite data used by the server/Android app.

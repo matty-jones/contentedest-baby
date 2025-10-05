@@ -160,6 +160,65 @@ class EventRepository(
         events
     }
 
+    // --- Live add helpers ---
+    suspend fun insertSleepSpan(
+        deviceId: String,
+        startUtc: Long,
+        endUtc: Long,
+        details: String? = null,
+        note: String? = null
+    ): String = withContext(Dispatchers.IO) {
+        val id = java.util.UUID.randomUUID().toString()
+        val now = kotlin.math.max(startUtc, endUtc)
+        val event = EventEntity(
+            event_id = id,
+            device_id = deviceId,
+            created_ts = now,
+            updated_ts = now,
+            version = 1,
+            deleted = false,
+            type = EventType.sleep,
+            details = details,
+            start_ts = startUtc,
+            end_ts = endUtc,
+            ts = null,
+            note = note
+        )
+        eventsDao.upsertEvent(event)
+        id
+    }
+
+    suspend fun insertBreastFeed(
+        deviceId: String,
+        segments: List<Triple<BreastSide, Long, Long>>, // side, start, end
+        note: String? = null
+    ): String = withContext(Dispatchers.IO) {
+        val id = java.util.UUID.randomUUID().toString()
+        val createdTs = segments.minOfOrNull { it.second } ?: java.time.Instant.now().epochSecond
+        val updatedTs = segments.maxOfOrNull { it.third } ?: createdTs
+        val event = EventEntity(
+            event_id = id,
+            device_id = deviceId,
+            created_ts = createdTs,
+            updated_ts = updatedTs,
+            version = 1,
+            deleted = false,
+            type = EventType.feed,
+            feed_mode = FeedMode.breast,
+            // Set primary timestamp to the first segment start so it appears on the timeline
+            ts = createdTs,
+            note = note
+        )
+        eventsDao.upsertEvent(event)
+        if (segments.isNotEmpty()) {
+            val segEntities = segments.map { (side, start, end) ->
+                FeedSegmentEntity(event_id = id, side = side, start_ts = start, end_ts = end)
+            }
+            eventsDao.upsertSegments(segEntities)
+        }
+        id
+    }
+
     // Sync functionality
     suspend fun getLastServerClock(): Long = withContext(Dispatchers.IO) {
         syncStateDao.get()?.last_server_clock ?: 0L

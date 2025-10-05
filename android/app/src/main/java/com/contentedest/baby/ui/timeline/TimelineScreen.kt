@@ -22,12 +22,15 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TimePickerState
 import androidx.compose.runtime.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.contentedest.baby.data.local.EventEntity
@@ -38,6 +41,7 @@ import com.contentedest.baby.domain.TimeRules
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -60,6 +64,7 @@ class TimelineViewModel(private val repo: EventRepository) {
 fun TimelineScreen(
     vm: TimelineViewModel,
     eventRepository: EventRepository,
+    deviceId: String,
     date: LocalDate,
     modifier: Modifier = Modifier
 ) {
@@ -85,6 +90,9 @@ fun TimelineScreen(
         EventType.feed to Color(0xFFFFB6C1), // Light pink
         EventType.nappy to Color(0xFF98FB98) // Pale green
     )
+
+    var showLivePicker by remember { mutableStateOf(false) }
+    var activeLiveType by remember { mutableStateOf<EventType?>(null) }
 
     Column(modifier = modifier.fillMaxSize()) {
         // Date header with navigation
@@ -129,6 +137,16 @@ fun TimelineScreen(
                 },
                 modifier = Modifier.fillMaxSize()
             )
+
+            // Floating "+" button for live add
+            FloatingActionButton(
+                onClick = { showLivePicker = true },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp)
+            ) {
+                Text("+")
+            }
         }
 
         // Details dialog with proper formatting
@@ -158,6 +176,279 @@ fun TimelineScreen(
                     }
                 }
             )
+        }
+
+        // Live event picker bottom sheet
+        if (showLivePicker) {
+            LiveEventPickerSheet(
+                onDismiss = { showLivePicker = false },
+                onPick = { type ->
+                    showLivePicker = false
+                    activeLiveType = type
+                }
+            )
+        }
+
+        when (activeLiveType) {
+            EventType.sleep -> LiveSleepDialog(
+                eventRepository = eventRepository,
+                deviceId = deviceId,
+                onDismiss = { activeLiveType = null },
+                onSaved = { scope.launch { vm.load(currentDate) }; activeLiveType = null }
+            )
+            EventType.feed -> LiveFeedDialog(
+                eventRepository = eventRepository,
+                deviceId = deviceId,
+                onDismiss = { activeLiveType = null },
+                onSaved = { scope.launch { vm.load(currentDate) }; activeLiveType = null }
+            )
+            EventType.nappy -> LiveNappyDialog(
+                eventRepository = eventRepository,
+                deviceId = deviceId,
+                onDismiss = { activeLiveType = null },
+                onSaved = { scope.launch { vm.load(currentDate) }; activeLiveType = null }
+            )
+            null -> {}
+        }
+    }
+}
+
+@Composable
+fun LiveEventPickerSheet(
+    onDismiss: () -> Unit,
+    onPick: (EventType) -> Unit
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Start live event", style = MaterialTheme.typography.headlineSmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { onPick(EventType.sleep) }, modifier = Modifier.weight(1f)) {
+                        Text("Sleeping", maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
+                    }
+                    Button(onClick = { onPick(EventType.feed) }, modifier = Modifier.weight(1f)) {
+                        Text("Feeding", maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
+                    }
+                    Button(onClick = { onPick(EventType.nappy) }, modifier = Modifier.weight(1f)) {
+                        Text("Diaper", maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
+                    }
+                }
+                OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
+            }
+        }
+    }
+}
+
+@Composable
+fun LiveSleepDialog(
+    eventRepository: EventRepository,
+    deviceId: String,
+    onDismiss: () -> Unit,
+    onSaved: () -> Unit
+) {
+    var running by remember { mutableStateOf(false) }
+    var startEpoch by remember { mutableStateOf<Long?>(null) }
+    var endEpoch by remember { mutableStateOf<Long?>(null) }
+    var details by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(running) {
+        while (running) {
+            endEpoch = java.time.Instant.now().epochSecond
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Card(modifier = Modifier.padding(16.dp), elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)) {
+            Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("Live Sleep", style = MaterialTheme.typography.headlineSmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Crib", "Arms", "Stroller").forEach { opt ->
+                        FilterChip(selected = details == opt, onClick = { details = opt }, label = { Text(opt) })
+                    }
+                }
+                val s = startEpoch
+                val e = endEpoch
+                val duration = if (s != null && e != null) e - s else 0
+                Text("Start: ${s?.let { formatTime(it) } ?: "--"}")
+                Text("End: ${e?.let { formatTime(it) } ?: "--"}")
+                Text("Duration: ${formatDuration(duration.coerceAtLeast(0))}")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = {
+                        if (!running) {
+                            startEpoch = java.time.Instant.now().epochSecond
+                            endEpoch = startEpoch
+                            running = true
+                        } else {
+                            running = false
+                        }
+                    }, modifier = Modifier.weight(1f)) { Text(if (running) "Pause" else "Play") }
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                }
+                Button(
+                    onClick = {
+                        val start = startEpoch
+                        val end = endEpoch
+                        if (start != null && end != null && end >= start) {
+                            scope.launch {
+                                eventRepository.insertSleepSpan(deviceId, start, end, details)
+                                onSaved()
+                                onDismiss()
+                            }
+                        }
+                    },
+                    enabled = startEpoch != null && endEpoch != null && !running,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Save") }
+            }
+        }
+    }
+}
+
+@Composable
+fun LiveFeedDialog(
+    eventRepository: EventRepository,
+    deviceId: String,
+    onDismiss: () -> Unit,
+    onSaved: () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    // Left/Right independent timers, only one active at a time
+    var activeSide by remember { mutableStateOf<com.contentedest.baby.data.local.BreastSide?>(null) }
+    var segments by remember { mutableStateOf(listOf<Triple<com.contentedest.baby.data.local.BreastSide, Long, Long>>()) }
+    var currentStart by remember { mutableStateOf<Long?>(null) }
+
+    var totalSeconds by remember { mutableStateOf(0L) }
+    LaunchedEffect(activeSide, currentStart, segments) {
+        while (activeSide != null) {
+            val now = java.time.Instant.now().epochSecond
+            val openDur = if (currentStart != null) (now - currentStart!!).coerceAtLeast(0) else 0
+            totalSeconds = segments.sumOf { (it.third - it.second).coerceAtLeast(0) } + openDur
+            delay(1000)
+        }
+        // When paused, finalize total without open segment
+        totalSeconds = segments.sumOf { (it.third - it.second).coerceAtLeast(0) }
+    }
+
+    fun toggle(side: com.contentedest.baby.data.local.BreastSide) {
+        val now = java.time.Instant.now().epochSecond
+        if (activeSide == side) {
+            // Pause current side
+            val start = currentStart ?: return
+            segments = segments + Triple(side, start, now)
+            activeSide = null
+            currentStart = null
+        } else {
+            // Switch sides: close previous if open, then start new
+            if (activeSide != null && currentStart != null) {
+                segments = segments + Triple(activeSide!!, currentStart!!, now)
+            }
+            activeSide = side
+            currentStart = now
+        }
+    }
+
+    // totalSeconds is kept live by LaunchedEffect above
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Card(modifier = Modifier.padding(16.dp), elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)) {
+            Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("Live Feeding (Breast)", style = MaterialTheme.typography.headlineSmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { toggle(com.contentedest.baby.data.local.BreastSide.left) }, modifier = Modifier.weight(1f)) {
+                        if (activeSide == com.contentedest.baby.data.local.BreastSide.left) {
+                            Text("⏸")
+                            Spacer(Modifier.width(8.dp))
+                            Text("Left")
+                        } else {
+                            Icon(Icons.Filled.PlayArrow, contentDescription = "Play Left")
+                            Spacer(Modifier.width(8.dp))
+                            Text("Left")
+                        }
+                    }
+                    Button(onClick = { toggle(com.contentedest.baby.data.local.BreastSide.right) }, modifier = Modifier.weight(1f)) {
+                        if (activeSide == com.contentedest.baby.data.local.BreastSide.right) {
+                            Text("⏸")
+                            Spacer(Modifier.width(8.dp))
+                            Text("Right")
+                        } else {
+                            Icon(Icons.Filled.PlayArrow, contentDescription = "Play Right")
+                            Spacer(Modifier.width(8.dp))
+                            Text("Right")
+                        }
+                    }
+                }
+                Text("Total: ${formatDuration(totalSeconds)}")
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(segments.size) { idx ->
+                        val (side, s, e) = segments[idx]
+                        AssistChip(onClick = {}, label = { Text("${side.name.first().uppercase()} ${formatDuration((e - s).coerceAtLeast(0))}") })
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                    Button(
+                        onClick = {
+                            if (activeSide != null && currentStart != null) {
+                                val now = java.time.Instant.now().epochSecond
+                                segments = segments + Triple(activeSide!!, currentStart!!, now)
+                                activeSide = null
+                                currentStart = null
+                            }
+                            scope.launch {
+                                eventRepository.insertBreastFeed(deviceId, segments)
+                                onSaved(); onDismiss()
+                            }
+                        },
+                        enabled = segments.isNotEmpty() && activeSide == null,
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Save") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun LiveNappyDialog(
+    eventRepository: EventRepository,
+    deviceId: String,
+    onDismiss: () -> Unit,
+    onSaved: () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    var selected by remember { mutableStateOf<String?>(null) }
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Card(modifier = Modifier.padding(16.dp), elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)) {
+            Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("Quick Diaper", style = MaterialTheme.typography.headlineSmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Wet", "Dirty", "Mixed").forEach { opt ->
+                        FilterChip(selected = selected == opt, onClick = { selected = opt }, label = { Text(opt) })
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                    Button(
+                        onClick = {
+                            val now = java.time.Instant.now().epochSecond
+                            scope.launch {
+                                eventRepository.logNappy(now, deviceId, selected ?: "Unknown", null)
+                                onSaved(); onDismiss()
+                            }
+                        },
+                        enabled = selected != null,
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Save") }
+                }
+            }
         }
     }
 }

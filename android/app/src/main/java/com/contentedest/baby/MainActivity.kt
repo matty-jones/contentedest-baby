@@ -124,9 +124,11 @@ class MainActivity : ComponentActivity() {
                         } else {
                             // Timeline as main screen
                             val timelineVm = remember { TimelineViewModel(eventRepository) }
+                            val deviceId = remember { tokenStorage.getDeviceId() ?: "device-${System.currentTimeMillis()}" }
                             TimelineScreen(
                                 vm = timelineVm,
                                 eventRepository = eventRepository,
+                                deviceId = deviceId,
                                 date = LocalDate.now(),
                                 modifier = Modifier.weight(1f)
                             )
