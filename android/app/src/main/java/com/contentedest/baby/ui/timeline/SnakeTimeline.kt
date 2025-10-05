@@ -17,6 +17,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.contentedest.baby.data.local.EventEntity
 import com.contentedest.baby.data.local.EventType
 import java.time.LocalDate
@@ -130,9 +131,12 @@ fun SnakeTimeline(
             val native = canvas.nativeCanvas
             val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
                 color = android.graphics.Color.WHITE
-                textSize = geom.trackThickness * 0.4f
+                // Keep labels small; cap at ~14sp and scale with track thickness
+                textSize = with(density) { kotlin.math.min(geom.trackThickness * 0.28f, 14.sp.toPx()) }
                 typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
             }
+            val labelPadPx = with(density) { 2.dp.toPx() }
+            val nudgePx = with(density) { 2.dp.toPx() }
             for (r in 0 until rows) {
                 val rowY = geom.rowCenters[r]
                 val startHour = 7 + r * hoursPerRow
@@ -146,8 +150,38 @@ fun SnakeTimeline(
                 val bottomY = rowY + geom.trackThickness * 0.9f
                 val startText = formatter.format(startTime)
                 val endText = formatter.format(endTime)
-                native.drawText(startText, startX - paint.measureText(startText)/2f, topY, paint)
-                native.drawText(endText,   endX   - paint.measureText(endText)/2f,   bottomY, paint)
+
+                // Draw the start label only for the first row; nudge it closer to the track
+                if (r == 0) {
+                    val sx = startX - paint.measureText(startText) / 2f
+                    val sy = topY + nudgePx
+                    native.drawText(startText, sx, sy, paint)
+                }
+
+                // Draw the end label for each row. Shift horizontally away from the track by at least half the label width,
+                // except the special case of the final 7:00 AM which we keep centered and just nudge vertically.
+                val endTextWidth = paint.measureText(endText)
+                val isFinalSevenAm = (r == rows - 1) && ((endHour % 24) == 7)
+                val (ex, ey) = if (isFinalSevenAm) {
+                    // Keep centered, nudge toward the track
+                    val x = endX - endTextWidth / 2f
+                    val y = bottomY - nudgePx
+                    x to y
+                } else {
+                    if (goingR) {
+                        // Row ends on the right edge → place label to the left of the track
+                        val rightEdge = endX - (endTextWidth * 0.5f + labelPadPx)
+                        val x = rightEdge - endTextWidth
+                        val y = bottomY
+                        x to y
+                    } else {
+                        // Row ends on the left edge → place label to the right of the track
+                        val x = endX + (endTextWidth * 0.5f + labelPadPx)
+                        val y = bottomY
+                        x to y
+                    }
+                }
+                native.drawText(endText, ex, ey, paint)
             }
         }
     }
