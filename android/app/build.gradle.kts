@@ -18,6 +18,7 @@ android {
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
+        buildConfigField("String", "BASE_URL", "\"http://192.168.86.3:8088/\"")
     }
     buildTypes {
 	getByName("debug") {
@@ -41,6 +42,7 @@ android {
         jvmTarget = "17"
     }
     buildFeatures {
+        buildConfig = true
         compose = true
     }
     composeOptions {

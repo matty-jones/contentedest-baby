@@ -26,6 +26,11 @@ Date: 2025-09-19
 - Fixed Android authentication: Added auth interceptor to OkHttp client to automatically include Bearer token in API requests.
 - Fixed Android pairing persistence: Updated MainActivity to properly check pairing state on app startup.
 - Fixed Android startup sync: Added sync trigger for already paired devices on app startup to pull existing events.
+ - Configured Android networking base URL and cleartext (2025-10-06):
+   - Added `BuildConfig.BASE_URL` in `android/app/build.gradle.kts` pointing to LAN host (`http://192.168.86.3:8005/`).
+   - Updated `NetworkModule.provideRetrofit()` to use `BuildConfig.BASE_URL` and ensure trailing slash.
+   - Allowed cleartext HTTP for `192.168.86.3` in `res/xml/network_security_config.xml` (Android 9+).
+   - Scanned codebase for hardcoded URLs; consolidated root HTTP calls under Retrofit with the single base URL.
 - Added debug logging to SyncWorker and EventRepository to trace sync flow and identify where events are being lost.
 - Fixed SyncWorker constructor: Changed from @AssistedInject to proper HiltWorker constructor to fix WorkManager instantiation error.
 - Fixed SyncWorker params reference: Changed params.inputData to inputData after constructor change.
@@ -81,6 +86,15 @@ Date: 2025-09-19
     - List devices:
       - `./query_db.py devices --enabled`
   - Honors `TCB_DB_PATH` environment variable (same as server). Prints counts and DB URL.
+
+- Added `migrate_database.py` to import a CSV and force-overwrite the current SQLite database.
+  - Destructive: drops and recreates tables, deduplicates rows by (Date, Start, End, Type, Details, Raw_Text)
+  - Maps Type values to server types (sleep|feed|nappy) and preserves `Details` into the `details` column
+  - Usage:
+    - `. server/.venv/bin/activate`
+    - `export TCB_DB_PATH=/home/blasky/Projects/contentedest-baby/server/data.db  # optional`
+    - `./migrate_database.py /abs/path/to/your.csv --device-id seed_device`
+    - `./query_db.py counts` to verify
 
 ## Database Schema Update (2025-09-29)
 
