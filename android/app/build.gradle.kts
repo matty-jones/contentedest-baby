@@ -21,6 +21,14 @@ android {
         buildConfigField("String", "BASE_URL", "\"http://192.168.86.3:8088/\"")
     }
     buildTypes {
+	getByName("debug") {
+	    buildConfigField("String", "BASE_URL", "\"http://192.168.86.3:8088/\"")
+	}
+	getByName("release") {
+	    // keep same or point to whatever you use in prod
+	    buildConfigField("String", "BASE_URL", "\"http://192.168.86.3:8088/\"")
+	    // shrinker/proguard rules are fine; BASE_URL is inlined
+	}
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

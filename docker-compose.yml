@@ -8,12 +8,12 @@ services:
       - .env
     environment:
       # Safe defaults; .env will override
-      TCB_DB_PATH: /data/data.db
+      TCB_DB_PATH: /app/server/db/data.db
       TZ: ${TZ:-America/Boise}
     ports:
-      - "${APP_PORT:-8088}:8080"
+      - "192.168.86.3:8088:8080"
     volumes:
-      - ./data:/data
+      - ./server/db:/app/server/db
     restart: unless-stopped
     healthcheck:
       # hits the FastAPI /health we just added
@@ -22,6 +22,7 @@ services:
       timeout: 3s
       retries: 5
       start_period: 20s
+    user: "${UID:-1000}:${GID:-1000}"
 
   # Optional: auto-update the app if you later push tagged images to GHCR.
   # Remove if you prefer manual updates.
