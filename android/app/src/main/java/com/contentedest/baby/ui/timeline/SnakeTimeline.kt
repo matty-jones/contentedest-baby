@@ -279,14 +279,17 @@ private fun computeEventDrawables(
             val right = max(x0, x1)
             segments.add(EventSegment(Rect(left, rectTop, right, rectTop + geom.barHeight + geom.hitSlop), e))
 
-            val touchesLeft = startFrac == 0f
-            val touchesRight = endFrac == 1f
+            // map row-start/end → physical left/right depending on direction
+            val touchesRowStart = startFrac == 0f
+            val touchesRowEnd = endFrac == 1f
+            val touchesPhysicalLeft  = if (goingRight) touchesRowStart else touchesRowEnd
+            val touchesPhysicalRight = if (goingRight) touchesRowEnd   else touchesRowStart
             val continues = segEnd < endOff
 
-            if (continues && (touchesLeft || touchesRight) && r < rows - 1) {
-                val edgeX = if (touchesRight) geom.innerRight else geom.innerLeft
+            if (continues && (touchesPhysicalLeft || touchesPhysicalRight) && r < rows - 1) {
+                val edgeX = if (touchesPhysicalRight) geom.innerRight else geom.innerLeft
                 val nextY = geom.rowCenters[r + 1]
-                val cpX = if (touchesRight) edgeX + geom.turnRadius else edgeX - geom.turnRadius
+                val cpX = if (touchesPhysicalRight) edgeX + geom.turnRadius else edgeX - geom.turnRadius // kept, but no longer used for drawing
                 val cpY = (rowY + nextY) / 2f
                 val start = Offset(edgeX, rowY)
                 val end = Offset(edgeX, nextY)
@@ -299,6 +302,7 @@ private fun computeEventDrawables(
                 )
                 connectors.add(EventConnector(start, Offset(cpX, cpY), end, rect, e))
             }
+
         }
     }
     return segments to connectors
