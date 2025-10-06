@@ -44,6 +44,24 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 PYTHONPATH=server pytest -q server/tests
 ```
 
+### Import a CSV and overwrite the database
+
+Use the migration script to replace the SQLite DB from a CSV. This is destructive.
+
+```
+# Activate venv first
+. server/.venv/bin/activate
+
+# Optionally point at a custom DB path (defaults to server/data.db)
+export TCB_DB_PATH=/home/blasky/Projects/contentedest-baby/server/data.db
+
+# Run the importer
+./migrate_database.py /absolute/path/to/your.csv --device-id seed_device
+
+# Verify counts
+./query_db.py counts
+```
+
 ## Quickstart — Android
 
 - Open `android/` in Android Studio (Giraffe+). Let it sync Gradle and build.

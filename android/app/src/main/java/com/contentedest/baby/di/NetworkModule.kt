@@ -13,6 +13,7 @@ import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import com.squareup.moshi.Moshi
 import javax.inject.Singleton
+import com.contentedest.baby.BuildConfig
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -48,7 +49,9 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideRetrofit(client: OkHttpClient): Retrofit = Retrofit.Builder()
-        .baseUrl("http://10.0.2.2:8005/")
+        .baseUrl(
+            (BuildConfig.BASE_URL.let { if (it.endsWith("/")) it else "$it/" })
+        )
         .addConverterFactory(MoshiConverterFactory.create(Moshi.Builder().build()))
         .client(client)
         .build()
