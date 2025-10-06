@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -104,11 +105,16 @@ fun SnakeTimeline(
         val (segments, connectors) = computeEventDrawables(events, currentDate, hoursPerRow, rows, geom)
 
         segments.forEach { seg ->
+            val color = eventColors[seg.event.type] ?: Color.LightGray
+            // Draw only the visible bar height (exclude hit slop) with a small fixed corner radius
+            val drawTop = seg.rect.top + geom.hitSlop / 2f
+            val drawHeight = geom.barHeight
+            val cornerPx = with(density) { 4.dp.toPx() }
             drawRoundRect(
-                color = eventColors[seg.event.type] ?: Color.LightGray,
-                topLeft = Offset(seg.rect.left, seg.rect.top),
-                size = seg.rect.size,
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(geom.barHeight / 2f, geom.barHeight / 2f)
+                color = color,
+                topLeft = Offset(seg.rect.left, drawTop),
+                size = Size(seg.rect.width, drawHeight),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerPx, cornerPx)
             )
         }
 
@@ -121,7 +127,7 @@ fun SnakeTimeline(
             drawPath(
                 path = p,
                 color = color,
-                style = Stroke(width = geom.barHeight, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                style = Stroke(width = geom.barHeight, cap = StrokeCap.Butt, join = StrokeJoin.Round)
             )
         }
 

@@ -73,6 +73,15 @@ Date: 2025-09-19
 - Wired `deviceId` from `MainActivity` into `TimelineScreen` and down to dialogs for correct attribution.
 - All changes compile and pass lints locally.
 
+### Snake Timeline Subtle Rounding (2025-10-06)
+
+- **Problem**: Event end-caps scaled with bar size, appearing too large or too small depending on event length/height.
+- **Solution**:
+  - Render event segments with a fixed, slight corner radius (4dp) and draw only the visible bar height (exclude hit slop) to keep rounding consistent.
+  - Render connectors with flat ends (stroke cap Butt) to avoid oversized rounded caps.
+- **Files Updated**: `android/app/src/main/java/com/contentedest/baby/ui/timeline/SnakeTimeline.kt`
+- **Result**: Events now have a subtle, consistent rounding regardless of size, improving visual consistency.
+
 ## Tooling
 
 - Added `query_db.py` at repo root to inspect SQLite data used by the server/Android app.
