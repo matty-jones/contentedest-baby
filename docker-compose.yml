@@ -1,0 +1,33 @@
+services:
+  contentedest:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: contentedest-baby
+    env_file:
+      - .env
+    environment:
+      # Safe defaults; .env will override
+      TCB_DB_PATH: /data/data.db
+      TZ: ${TZ:-America/Boise}
+    ports:
+      - "${APP_PORT:-8088}:8080"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+    healthcheck:
+      # hits the FastAPI /health we just added
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+  # Optional: auto-update the app if you later push tagged images to GHCR.
+  # Remove if you prefer manual updates.
+  watchtower:
+    image: containrrr/watchtower
+    command: --cleanup --interval 3600 contentedest-baby
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped

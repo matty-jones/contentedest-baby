@@ -1,0 +1,12 @@
+.git
+**/__pycache__/
+**/*.py[cod]
+**/*.sqlite*
+**/.pytest_cache
+android/.gradle
+android/.idea
+android/build
+dist
+build
+.env
+*.swp

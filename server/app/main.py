@@ -4,7 +4,7 @@ import logging
 import csv
 import os
 from pathlib import Path
-from fastapi import FastAPI, Depends, Request
+from fastapi import FastAPI, Depends, Request, status
 from sqlalchemy.orm import Session
 from .database import Base, engine, SessionLocal
 from .models import Device, Event
@@ -31,6 +31,10 @@ async def log_requests(request: Request, call_next):
     return response
 
 Base.metadata.create_all(bind=engine)
+
+@app.get("/health", status_code=status.HTTP_200_OK)
+def health():
+    return {"status": "ok"}
 
 # Seed database on startup
 @app.on_event("startup")
