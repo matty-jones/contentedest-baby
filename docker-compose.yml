@@ -11,7 +11,7 @@ services:
       TCB_DB_PATH: /app/server/db/data.db
       TZ: ${TZ:-America/Boise}
     ports:
-      - "${APP_PORT:-8088}:8080"
+      - "192.168.86.3:8088:8080"
     volumes:
       - ./server/db:/app/server/db
     restart: unless-stopped
