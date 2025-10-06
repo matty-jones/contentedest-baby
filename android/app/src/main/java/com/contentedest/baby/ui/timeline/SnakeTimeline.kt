@@ -120,6 +120,7 @@ fun SnakeTimeline(
 
         connectors.forEach { c ->
             val color = eventColors[c.event.type] ?: Color.LightGray
+            // Draw quadratic curve to match the snake path
             val p = Path().apply {
                 moveTo(c.start.x, c.start.y)
                 quadraticBezierTo(c.cp.x, c.cp.y, c.end.x, c.end.y)
@@ -129,6 +130,21 @@ fun SnakeTimeline(
                 color = color,
                 style = Stroke(width = geom.barHeight, cap = StrokeCap.Butt, join = StrokeJoin.Round)
             )
+
+            // Overlay small rectangular plugs at both row ends to create horizontal end caps and remove any wedge gaps
+            val edgeX = c.start.x // same as c.end.x
+            val isRightSide = kotlin.math.abs(edgeX - geom.innerRight) <= kotlin.math.abs(edgeX - geom.innerLeft)
+            val plugLen = geom.barHeight * 0.6f
+            val halfH = geom.barHeight / 2f
+            val y1 = c.start.y
+            val y2 = c.end.y
+            if (isRightSide) {
+                drawRect(color = color, topLeft = Offset(edgeX - plugLen, y1 - halfH), size = Size(plugLen, geom.barHeight))
+                drawRect(color = color, topLeft = Offset(edgeX - plugLen, y2 - halfH), size = Size(plugLen, geom.barHeight))
+            } else {
+                drawRect(color = color, topLeft = Offset(edgeX, y1 - halfH), size = Size(plugLen, geom.barHeight))
+                drawRect(color = color, topLeft = Offset(edgeX, y2 - halfH), size = Size(plugLen, geom.barHeight))
+            }
         }
 
         // Time labels above/below row ends

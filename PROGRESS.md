@@ -82,6 +82,20 @@ Date: 2025-09-19
 - **Files Updated**: `android/app/src/main/java/com/contentedest/baby/ui/timeline/SnakeTimeline.kt`
 - **Result**: Events now have a subtle, consistent rounding regardless of size, improving visual consistency.
 
+### Connector Arc Tangents (2025-10-06)
+
+- **Problem**: Connector quadratic curves met the track at ~45°/135°; with flat caps this looked misaligned.
+- **Solution**: Replaced quadratic curve with a true semicircular arc between row centers so end tangents are horizontal (0°/180°), keeping flat caps.
+- **Files Updated**: `android/app/src/main/java/com/contentedest/baby/ui/timeline/SnakeTimeline.kt`
+- **Result**: Connectors now visually integrate with the track; end-caps align cleanly with the path.
+
+### Connector Quadratic + Plugs (2025-10-06)
+
+- **Problem**: True semicircle arc fixed cap tangents but no longer matched the snake's quadratic curve.
+- **Solution**: Restored quadratic connector to match the path and added short rectangular overlays at both row ends to create horizontal end caps and remove gaps.
+- **Files Updated**: `android/app/src/main/java/com/contentedest/baby/ui/timeline/SnakeTimeline.kt`
+- **Result**: Retains the space-efficient quadratic curve while achieving clean 0°/180° visual end-caps with no gaps.
+
 ## Tooling
 
 - Added `query_db.py` at repo root to inspect SQLite data used by the server/Android app.
