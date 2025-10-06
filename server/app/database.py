@@ -8,6 +8,7 @@ from sqlalchemy.engine import Engine
 DB_PATH = os.environ.get("TCB_DB_PATH", os.path.join(os.path.dirname(__file__), "..", "data.db"))
 SQLALCHEMY_DATABASE_URL = f"sqlite:///{os.path.abspath(DB_PATH)}"
 
+os.makedirs(os.path.dirname(os.path.abspath(DB_PATH)), exist_ok=True)
 
 @event.listens_for(Engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
