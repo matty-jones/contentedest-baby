@@ -96,6 +96,41 @@ Date: 2025-09-19
 - **Files Updated**: `android/app/src/main/java/com/contentedest/baby/ui/timeline/SnakeTimeline.kt`
 - **Result**: Retains the space-efficient quadratic curve while achieving clean 0°/180° visual end-caps with no gaps.
 
+### Connector Wedge Seam Fill (2025-10-10)
+
+- **Problem**: Rectangular plugs left visible seams because the connector begins curving immediately off the edge.
+- **Solution**: Replaced plugs with wedge-shaped fills computed from the connector tangent at each end to perfectly fill the triangular gap between the horizontal event bar and the quadratic path.
+- **Files Updated**: `android/app/src/main/java/com/contentedest/baby/ui/timeline/SnakeTimeline.kt`
+- **Result**: Seamless join at both ends; no visible 45°/135° seams while preserving the matching quadratic curve and flat caps.
+
+### Right-edge Wedge Fix + Overdraw (2025-10-10)
+
+- **Problem**: Wedge computation assumed left edge; right-edge connectors still showed seam lines, plus hairline gaps on some densities.
+- **Solution**: Determined edge side per connector and over-drew wedge triangles slightly into the event bar (±0.75dp) to eliminate subpixel gaps.
+- **Files Updated**: `android/app/src/main/java/com/contentedest/baby/ui/timeline/SnakeTimeline.kt`
+- **Result**: Clean joins on both left and right edges across densities; gaps removed.
+
+### Wedge Tangent Correction (2025-10-10)
+
+- **Problem**: Overdraw reintroduced seams on the left; tangent not evaluated correctly at both ends.
+- **Solution**: Removed overdraw and computed wedges using true quadratic tangents: t=0 → 2(cp−start); t=1 → 2(end−cp). Applies symmetrically to left/right edges.
+- **Files Updated**: `android/app/src/main/java/com/contentedest/baby/ui/timeline/SnakeTimeline.kt`
+- **Result**: Seam fills align with the connector direction on both sides without overdraw.
+
+### Wedge Robustness Fix (2025-10-10)
+
+- **Problem**: One wedge sometimes failed to render per side due to winding/self-intersection in the quad fill.
+- **Solution**: Changed each wedge into two simple triangles (top and bottom) meeting at the center point, using the correct tangent-normal at each end.
+- **Files Updated**: `android/app/src/main/java/com/contentedest/baby/ui/timeline/SnakeTimeline.kt`
+- **Result**: All four cases render consistently (left/right, top/bottom) with no missing wedges.
+
+### Start-Top / End-Bottom Wedge Logic (2025-10-10)
+
+- **Problem**: Right-side start and left-side end were still wrong; triangles were joining the incorrect edges (left/top vs right/top, etc.).
+- **Solution**: Compute curve top/bottom via tangent normal and only draw the start TOP triangle and the end BOTTOM triangle, which matches the four required cases across both sides.
+- **Files Updated**: `android/app/src/main/java/com/contentedest/baby/ui/timeline/SnakeTimeline.kt`
+- **Result**: Clean joins for right-start top and left-end bottom, matching the snake curve and flat caps.
+
 ## Tooling
 
 - Added `query_db.py` at repo root to inspect SQLite data used by the server/Android app.
