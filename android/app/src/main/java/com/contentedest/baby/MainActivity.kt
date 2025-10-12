@@ -8,6 +8,12 @@ import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Timeline
+import androidx.compose.material.icons.outlined.MonitorWeight
+import androidx.compose.material.icons.outlined.Videocam
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import com.contentedest.baby.ui.theme.TheContentedestBabyTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -26,6 +32,9 @@ import com.contentedest.baby.ui.pairing.PairingScreen
 import com.contentedest.baby.ui.pairing.PairingViewModel
 import com.contentedest.baby.ui.stats.StatisticsScreen
 import com.contentedest.baby.ui.stats.StatisticsViewModel
+import com.contentedest.baby.ui.growth.GrowthScreen
+import com.contentedest.baby.ui.nursery.NurseryScreen
+import com.contentedest.baby.BuildConfig
 import dagger.hilt.android.AndroidEntryPoint
 import java.time.LocalDate
 import javax.inject.Inject
@@ -59,79 +68,137 @@ class MainActivity : ComponentActivity() {
                 var showExportScreen by remember { mutableStateOf(false) }
                 var showStatisticsScreen by remember { mutableStateOf(false) }
 
-                Column(modifier = Modifier.fillMaxSize()) {
-                    TopAppBar(
-                        title = { Text("The Contentedest Baby") },
-                        actions = {
-                            if (isPaired.value) {
-                                IconButton(onClick = { showStatisticsScreen = true }) {
-                                    Icon(
-                                        imageVector = Icons.Filled.MoreVert,
-                                        contentDescription = "Statistics"
-                                    )
-                                }
-                                IconButton(onClick = { showExportScreen = true }) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Share,
-                                        contentDescription = "Export"
-                                    )
+                // Simple bottom nav across three tabs
+                var selectedTab by remember { mutableStateOf(0) } // 0: Timeline, 1: Growth, 2: Nursery
+
+                Scaffold(
+                    topBar = {
+                        TopAppBar(
+                            title = { Text("The Contentedest Baby") },
+                            actions = {
+                                if (isPaired.value) {
+                                    IconButton(onClick = { showStatisticsScreen = true }) {
+                                        Icon(
+                                            imageVector = Icons.Filled.MoreVert,
+                                            contentDescription = "Statistics"
+                                        )
+                                    }
+                                    IconButton(onClick = { showExportScreen = true }) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Share,
+                                            contentDescription = "Export"
+                                        )
+                                    }
                                 }
                             }
+                        )
+                    },
+                    bottomBar = {
+                        if (isPaired.value && !showExportScreen && !showStatisticsScreen) {
+                            NavigationBar {
+                                NavigationBarItem(
+                                    selected = selectedTab == 0,
+                                    onClick = { selectedTab = 0 },
+                                    icon = { Icon(Icons.Outlined.Timeline, contentDescription = "Timeline") },
+                                    label = { Text("Timeline") }
+                                )
+                                NavigationBarItem(
+                                    selected = selectedTab == 1,
+                                    onClick = { selectedTab = 1 },
+                                    icon = { Icon(Icons.Outlined.MonitorWeight, contentDescription = "Growth") },
+                                    label = { Text("Growth") }
+                                )
+                                NavigationBarItem(
+                                    selected = selectedTab == 2,
+                                    onClick = { selectedTab = 2 },
+                                    icon = { Icon(Icons.Outlined.Videocam, contentDescription = "Nursery") },
+                                    label = { Text("Nursery") }
+                                )
+                            }
                         }
-                    )
-
+                    }
+                ) { innerPadding ->
                     if (!isPaired.value) {
                         val vm: PairingViewModel = hiltViewModel()
-                        PairingScreen(vm)
+                        Box(modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding)) {
+                            PairingScreen(vm)
+                        }
                         LaunchedEffect(Unit) {
                             vm.paired.collect { paired ->
                                 if (paired) {
                                     isPaired.value = true
                                     val deviceId = tokenStorage.getDeviceId() ?: "device-${System.currentTimeMillis()}"
-
-                                    // Schedule periodic sync (this will also trigger immediate sync if needed)
                                     SyncWorker.schedulePeriodicSync(this@MainActivity, deviceId)
                                 }
                             }
                             vm.error.collect { error ->
                                 if (error != null) {
                                     println("Pairing error in MainActivity: $error")
-                                    // You could show a toast or snackbar here
                                 }
                             }
                         }
-                    } else {
-                        if (showExportScreen) {
-                            val exportVm: ExportViewModel = hiltViewModel()
+                    } else if (showExportScreen) {
+                        val exportVm: ExportViewModel = hiltViewModel()
+                        Box(modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding)) {
                             ExportScreen(exportVm) { showExportScreen = false }
-                        } else if (showStatisticsScreen) {
-                            val statsVm: StatisticsViewModel = hiltViewModel()
+                        }
+                    } else if (showStatisticsScreen) {
+                        val statsVm: StatisticsViewModel = hiltViewModel()
+                        Box(modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding)) {
                             StatisticsScreen(
                                 vm = statsVm,
                                 onNavigateBack = { showStatisticsScreen = false },
                                 onForceRepair = {
-                                    // Clear token storage to force re-pairing
                                     tokenStorage.clear()
                                     isPaired.value = false
                                     showStatisticsScreen = false
                                 },
                                 onForceSync = {
-                                    // Force immediate sync
                                     val deviceId = tokenStorage.getDeviceId() ?: "device-${System.currentTimeMillis()}"
                                     SyncWorker.triggerImmediateSync(this@MainActivity, deviceId)
                                 }
                             )
-                        } else {
-                            // Timeline as main screen
-                            val timelineVm = remember { TimelineViewModel(eventRepository) }
-                            val deviceId = remember { tokenStorage.getDeviceId() ?: "device-${System.currentTimeMillis()}" }
-                            TimelineScreen(
-                                vm = timelineVm,
-                                eventRepository = eventRepository,
-                                deviceId = deviceId,
-                                date = LocalDate.now(),
-                                modifier = Modifier.weight(1f)
-                            )
+                        }
+                    } else {
+                        // Main tabs content
+                        val deviceId = remember { tokenStorage.getDeviceId() ?: "device-${System.currentTimeMillis()}" }
+                        when (selectedTab) {
+                            0 -> {
+                                val timelineVm = remember { TimelineViewModel(eventRepository) }
+                                TimelineScreen(
+                                    vm = timelineVm,
+                                    eventRepository = eventRepository,
+                                    deviceId = deviceId,
+                                    date = LocalDate.now(),
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(innerPadding)
+                                )
+                            }
+                            1 -> {
+                                GrowthScreen(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(innerPadding)
+                                )
+                            }
+                            2 -> {
+                                val rtspUrl by remember {
+                                    mutableStateOf(computeRtspUrlFromBase(BuildConfig.BASE_URL))
+                                }
+                                NurseryScreen(
+                                    rtspUrl = rtspUrl,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(innerPadding)
+                                )
+                            }
                         }
                     }
                 }
@@ -139,6 +206,19 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+private fun computeRtspUrlFromBase(baseUrl: String): String {
+    // Expecting http(s)://host:port/
+    return try {
+        val uri = android.net.Uri.parse(baseUrl)
+        val host = uri.host ?: "localhost"
+        val port = if (uri.port != -1) uri.port else 8554 // common RTSP port
+        // Default path for local camera stream
+        "rtsp://$host:$port/stream"
+    } catch (t: Throwable) {
+        "rtsp://localhost:8554/stream"
+    }
+}
 }
 
 

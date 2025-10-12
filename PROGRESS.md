@@ -197,3 +197,14 @@ Date: 2025-09-19
   - Debug options only appear when functions are provided (clean UI for production)
 - **Files Updated**: StatisticsScreen.kt, MainActivity.kt, SyncWorker.kt
 - **Usage**: Access via menu (three dots) → Statistics → Debug Options section
+
+### Bottom Navigation + New Pages (2025-10-12)
+
+- Added bottom navigation bar with three tabs: Timeline, Growth, Nursery.
+- Implemented `GrowthScreen` placeholder; future plots/statistics will live here.
+- Implemented `NurseryScreen` with Media3 ExoPlayer RTSP playback.
+- Derive RTSP URL from `BuildConfig.BASE_URL` host: `rtsp://<host>:8554/stream`.
+- Refactored `MainActivity` to use `Scaffold` with `TopAppBar` and `NavigationBar`.
+- Preserved full-screen Timeline by giving it `Modifier.fillMaxSize()` within Scaffold content and avoiding scroll containers.
+- Added dependencies: `media3-exoplayer`, `media3-exoplayer-rtsp`, `media3-ui`, and `material-icons-extended`.
+- All modified files pass lints.
