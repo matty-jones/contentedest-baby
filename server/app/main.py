@@ -200,8 +200,8 @@ def pair(req: PairRequest, db: Session = Depends(get_db)):
 
 
 @app.post("/sync/push", response_model=SyncPushResponse)
-def sync_push(items: list[EventDTO], db: Session = Depends(get_db), device: Device = Depends(get_current_device)):
-    logger.info(f"Sync push from device {device.device_id}: {len(items)} events")
+def sync_push(items: list[EventDTO], db: Session = Depends(get_db)):
+    logger.info(f"Sync push: {len(items)} events")
     incoming = []
     for dto in items:
         incoming.append(Event(
@@ -243,10 +243,10 @@ def sync_push(items: list[EventDTO], db: Session = Depends(get_db), device: Devi
 
 
 @app.get("/sync/pull", response_model=SyncPullResponse)
-def sync_pull(since: int = 0, db: Session = Depends(get_db), device: Device = Depends(get_current_device)):
+def sync_pull(since: int = 0, db: Session = Depends(get_db)):
     events = crud.select_events_since(db, since)
     current_clock = crud.get_clock(db)
-    logger.info(f"Sync pull from device {device.device_id}: since={since}, returning {len(events)} events, clock={current_clock}")
+    logger.info(f"Sync pull: since={since}, returning {len(events)} events, clock={current_clock}")
     payload = [
         EventDTO(
             event_id=ev.event_id,

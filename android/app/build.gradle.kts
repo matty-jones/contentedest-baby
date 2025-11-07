@@ -18,15 +18,15 @@ android {
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
-        buildConfigField("String", "BASE_URL", "\"http://192.168.86.3:8088/\"")
+        buildConfigField("String", "BASE_URL", "\"http://192.168.86.3:8005/\"")
     }
     buildTypes {
 	getByName("debug") {
-	    buildConfigField("String", "BASE_URL", "\"http://192.168.86.3:8088/\"")
+	    buildConfigField("String", "BASE_URL", "\"http://192.168.86.3:8005/\"")
 	}
 	getByName("release") {
 	    // keep same or point to whatever you use in prod
-	    buildConfigField("String", "BASE_URL", "\"http://192.168.86.3:8088/\"")
+	    buildConfigField("String", "BASE_URL", "\"http://192.168.86.3:8005/\"")
 	    // shrinker/proguard rules are fine; BASE_URL is inlined
 	}
         release {
