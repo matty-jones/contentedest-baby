@@ -31,6 +31,9 @@ Date: 2025-09-19
    - Updated `NetworkModule.provideRetrofit()` to use `BuildConfig.BASE_URL` and ensure trailing slash.
    - Allowed cleartext HTTP for `192.168.86.3` in `res/xml/network_security_config.xml` (Android 9+).
    - Scanned codebase for hardcoded URLs; consolidated root HTTP calls under Retrofit with the single base URL.
+ - Updated server URL to port 8005 (2025-10-10):
+   - Changed `BASE_URL` in all build types (default, debug, release) from port 8088 to 8005 to match server configuration.
+   - Server accessible at `http://192.168.86.3:8005/` on local network workstation.
 - Added debug logging to SyncWorker and EventRepository to trace sync flow and identify where events are being lost.
 - Fixed SyncWorker constructor: Changed from @AssistedInject to proper HiltWorker constructor to fix WorkManager instantiation error.
 - Fixed SyncWorker params reference: Changed params.inputData to inputData after constructor change.
@@ -208,3 +211,20 @@ Date: 2025-09-19
 - Preserved full-screen Timeline by giving it `Modifier.fillMaxSize()` within Scaffold content and avoiding scroll containers.
 - Added dependencies: `media3-exoplayer`, `media3-exoplayer-rtsp`, `media3-ui`, and `material-icons-extended`.
 - All modified files pass lints.
+
+### Removed Pairing System (2025-10-10)
+
+- **Rationale**: Pairing was unnecessary for a local network app used only by two people. Network access control (home network/VPN) provides sufficient security.
+- **Server Changes**:
+  - Removed authentication requirement from `/sync/push` and `/sync/pull` endpoints.
+  - Sync endpoints now work without Bearer tokens or device authentication.
+- **Android Changes**:
+  - Removed all pairing UI and logic from `MainActivity`.
+  - Removed auth interceptor from `NetworkModule` - no more token handling.
+  - Updated `SyncWorker` to work without token checks.
+  - App now goes directly to main screen on startup.
+  - Device ID is generated from Android ID for event attribution.
+- **Nursery Screen Update**:
+  - Changed from RTSP ExoPlayer to WebView for HTML stream.
+  - Stream URL: `http://192.168.86.3:1984/stream.html?src=hubble_android`.
+  - Removed Media3 RTSP dependencies (can be removed from build.gradle if desired).
