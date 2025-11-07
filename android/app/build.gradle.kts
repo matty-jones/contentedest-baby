@@ -18,15 +18,15 @@ android {
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
-        buildConfigField("String", "BASE_URL", "\"http://192.168.86.3:8088/\"")
+        buildConfigField("String", "BASE_URL", "\"http://192.168.86.3:8005/\"")
     }
     buildTypes {
 	getByName("debug") {
-	    buildConfigField("String", "BASE_URL", "\"http://192.168.86.3:8088/\"")
+	    buildConfigField("String", "BASE_URL", "\"http://192.168.86.3:8005/\"")
 	}
 	getByName("release") {
 	    // keep same or point to whatever you use in prod
-	    buildConfigField("String", "BASE_URL", "\"http://192.168.86.3:8088/\"")
+	    buildConfigField("String", "BASE_URL", "\"http://192.168.86.3:8005/\"")
 	    // shrinker/proguard rules are fine; BASE_URL is inlined
 	}
         release {
@@ -64,7 +64,13 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3:1.3.0")
+    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.navigation:navigation-compose:2.8.0")
+
+    // Media3 for RTSP nursery camera playback
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-exoplayer-rtsp:1.4.1")
+    implementation("androidx.media3:media3-ui:1.4.1")
 
     implementation("com.google.dagger:hilt-android:2.51.1")
     kapt("com.google.dagger:hilt-compiler:2.51.1")

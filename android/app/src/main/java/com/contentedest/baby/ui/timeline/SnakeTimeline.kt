@@ -27,6 +27,7 @@ import java.time.format.DateTimeFormatter
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sqrt
 
 @Composable
 fun SnakeTimeline(
@@ -131,20 +132,44 @@ fun SnakeTimeline(
                 style = Stroke(width = geom.barHeight, cap = StrokeCap.Butt, join = StrokeJoin.Round)
             )
 
-            // Overlay small rectangular plugs at both row ends to create horizontal end caps and remove any wedge gaps
-            val edgeX = c.start.x // same as c.end.x
-            val isRightSide = kotlin.math.abs(edgeX - geom.innerRight) <= kotlin.math.abs(edgeX - geom.innerLeft)
-            val plugLen = geom.barHeight * 0.6f
+            // Overlay tangent-based wedges (no overdraw), using correct tangents
             val halfH = geom.barHeight / 2f
-            val y1 = c.start.y
-            val y2 = c.end.y
-            if (isRightSide) {
-                drawRect(color = color, topLeft = Offset(edgeX - plugLen, y1 - halfH), size = Size(plugLen, geom.barHeight))
-                drawRect(color = color, topLeft = Offset(edgeX - plugLen, y2 - halfH), size = Size(plugLen, geom.barHeight))
-            } else {
-                drawRect(color = color, topLeft = Offset(edgeX, y1 - halfH), size = Size(plugLen, geom.barHeight))
-                drawRect(color = color, topLeft = Offset(edgeX, y2 - halfH), size = Size(plugLen, geom.barHeight))
+
+            fun computeOffsets(point: Offset, tangent: Offset): Pair<Offset, Offset> {
+                val dx = tangent.x
+                val dy = tangent.y
+                val mag = sqrt(dx * dx + dy * dy).coerceAtLeast(1e-3f)
+                val nx = -dy / mag
+                val ny = dx / mag
+                val a = Offset(point.x + nx * halfH, point.y + ny * halfH)
+                val b = Offset(point.x - nx * halfH, point.y - ny * halfH)
+                // Top has smaller y (screen coords); bottom has larger y
+                return if (a.y <= b.y) a to b else b to a
             }
+
+            // Tangent at t=0: 2*(cp - start); Tangent at t=1: 2*(end - cp)
+            val tanStart = Offset((c.cp.x - c.start.x) * 2f, (c.cp.y - c.start.y) * 2f)
+            val tanEnd = Offset((c.end.x - c.cp.x) * 2f, (c.end.y - c.cp.y) * 2f)
+            val (startTop, _) = computeOffsets(c.start, tanStart)
+            val (_, endBottom) = computeOffsets(c.end, tanEnd)
+
+            // Start: join right/left event edge to TOP edge of the curve
+            val startTopTri = Path().apply {
+                moveTo(c.start.x, c.start.y - halfH)
+                lineTo(startTop.x, startTop.y)
+                lineTo(c.start.x, c.start.y)
+                close()
+            }
+            drawPath(path = startTopTri, color = color)
+
+            // End: join BOTTOM edge of the curve to right/left event edge
+            val endBottomTri = Path().apply {
+                moveTo(c.end.x, c.end.y + halfH)
+                lineTo(endBottom.x, endBottom.y)
+                lineTo(c.end.x, c.end.y)
+                close()
+            }
+            drawPath(path = endBottomTri, color = color)
         }
 
         // Time labels above/below row ends
