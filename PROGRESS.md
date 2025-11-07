@@ -31,6 +31,9 @@ Date: 2025-09-19
    - Updated `NetworkModule.provideRetrofit()` to use `BuildConfig.BASE_URL` and ensure trailing slash.
    - Allowed cleartext HTTP for `192.168.86.3` in `res/xml/network_security_config.xml` (Android 9+).
    - Scanned codebase for hardcoded URLs; consolidated root HTTP calls under Retrofit with the single base URL.
+ - Updated server URL to port 8005 (2025-10-10):
+   - Changed `BASE_URL` in all build types (default, debug, release) from port 8088 to 8005 to match server configuration.
+   - Server accessible at `http://192.168.86.3:8005/` on local network workstation.
 - Added debug logging to SyncWorker and EventRepository to trace sync flow and identify where events are being lost.
 - Fixed SyncWorker constructor: Changed from @AssistedInject to proper HiltWorker constructor to fix WorkManager instantiation error.
 - Fixed SyncWorker params reference: Changed params.inputData to inputData after constructor change.
@@ -95,6 +98,41 @@ Date: 2025-09-19
 - **Solution**: Restored quadratic connector to match the path and added short rectangular overlays at both row ends to create horizontal end caps and remove gaps.
 - **Files Updated**: `android/app/src/main/java/com/contentedest/baby/ui/timeline/SnakeTimeline.kt`
 - **Result**: Retains the space-efficient quadratic curve while achieving clean 0°/180° visual end-caps with no gaps.
+
+### Connector Wedge Seam Fill (2025-10-10)
+
+- **Problem**: Rectangular plugs left visible seams because the connector begins curving immediately off the edge.
+- **Solution**: Replaced plugs with wedge-shaped fills computed from the connector tangent at each end to perfectly fill the triangular gap between the horizontal event bar and the quadratic path.
+- **Files Updated**: `android/app/src/main/java/com/contentedest/baby/ui/timeline/SnakeTimeline.kt`
+- **Result**: Seamless join at both ends; no visible 45°/135° seams while preserving the matching quadratic curve and flat caps.
+
+### Right-edge Wedge Fix + Overdraw (2025-10-10)
+
+- **Problem**: Wedge computation assumed left edge; right-edge connectors still showed seam lines, plus hairline gaps on some densities.
+- **Solution**: Determined edge side per connector and over-drew wedge triangles slightly into the event bar (±0.75dp) to eliminate subpixel gaps.
+- **Files Updated**: `android/app/src/main/java/com/contentedest/baby/ui/timeline/SnakeTimeline.kt`
+- **Result**: Clean joins on both left and right edges across densities; gaps removed.
+
+### Wedge Tangent Correction (2025-10-10)
+
+- **Problem**: Overdraw reintroduced seams on the left; tangent not evaluated correctly at both ends.
+- **Solution**: Removed overdraw and computed wedges using true quadratic tangents: t=0 → 2(cp−start); t=1 → 2(end−cp). Applies symmetrically to left/right edges.
+- **Files Updated**: `android/app/src/main/java/com/contentedest/baby/ui/timeline/SnakeTimeline.kt`
+- **Result**: Seam fills align with the connector direction on both sides without overdraw.
+
+### Wedge Robustness Fix (2025-10-10)
+
+- **Problem**: One wedge sometimes failed to render per side due to winding/self-intersection in the quad fill.
+- **Solution**: Changed each wedge into two simple triangles (top and bottom) meeting at the center point, using the correct tangent-normal at each end.
+- **Files Updated**: `android/app/src/main/java/com/contentedest/baby/ui/timeline/SnakeTimeline.kt`
+- **Result**: All four cases render consistently (left/right, top/bottom) with no missing wedges.
+
+### Start-Top / End-Bottom Wedge Logic (2025-10-10)
+
+- **Problem**: Right-side start and left-side end were still wrong; triangles were joining the incorrect edges (left/top vs right/top, etc.).
+- **Solution**: Compute curve top/bottom via tangent normal and only draw the start TOP triangle and the end BOTTOM triangle, which matches the four required cases across both sides.
+- **Files Updated**: `android/app/src/main/java/com/contentedest/baby/ui/timeline/SnakeTimeline.kt`
+- **Result**: Clean joins for right-start top and left-end bottom, matching the snake curve and flat caps.
 
 ## Tooling
 
@@ -163,6 +201,17 @@ Date: 2025-09-19
 - **Files Updated**: StatisticsScreen.kt, MainActivity.kt, SyncWorker.kt
 - **Usage**: Access via menu (three dots) → Statistics → Debug Options section
 
+### Bottom Navigation + New Pages (2025-10-12)
+
+- Added bottom navigation bar with three tabs: Timeline, Growth, Nursery.
+- Implemented `GrowthScreen` placeholder; future plots/statistics will live here.
+- Implemented `NurseryScreen` with Media3 ExoPlayer RTSP playback.
+- Derive RTSP URL from `BuildConfig.BASE_URL` host: `rtsp://<host>:8554/stream`.
+- Refactored `MainActivity` to use `Scaffold` with `TopAppBar` and `NavigationBar`.
+- Preserved full-screen Timeline by giving it `Modifier.fillMaxSize()` within Scaffold content and avoiding scroll containers.
+- Added dependencies: `media3-exoplayer`, `media3-exoplayer-rtsp`, `media3-ui`, and `material-icons-extended`.
+- All modified files pass lints.
+
 ## Server Production Setup (2025-11-06)
 
 ### Database Initialization and Data Import
@@ -199,3 +248,20 @@ Date: 2025-09-19
   - Start: `sudo systemctl start contentedest-baby.service`
   - Restart: `sudo systemctl restart contentedest-baby.service`
   - Logs: `sudo journalctl -u contentedest-baby.service -f`
+
+### Removed Pairing System (2025-10-10)
+
+- **Rationale**: Pairing was unnecessary for a local network app used only by two people. Network access control (home network/VPN) provides sufficient security.
+- **Server Changes**:
+  - Removed authentication requirement from `/sync/push` and `/sync/pull` endpoints.
+  - Sync endpoints now work without Bearer tokens or device authentication.
+- **Android Changes**:
+  - Removed all pairing UI and logic from `MainActivity`.
+  - Removed auth interceptor from `NetworkModule` - no more token handling.
+  - Updated `SyncWorker` to work without token checks.
+  - App now goes directly to main screen on startup.
+  - Device ID is generated from Android ID for event attribution.
+- **Nursery Screen Update**:
+  - Changed from RTSP ExoPlayer to WebView for HTML stream.
+  - Stream URL: `http://192.168.86.3:1984/stream.html?src=hubble_android`.
+  - Removed Media3 RTSP dependencies (can be removed from build.gradle if desired).

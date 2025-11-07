@@ -6,7 +6,6 @@ import androidx.work.ListenableWorker.Result as WorkerResult
 import com.contentedest.baby.data.repo.EventRepository
 import com.contentedest.baby.data.repo.SyncRepository
 import com.contentedest.baby.net.EventDto
-import com.contentedest.baby.net.TokenStorage
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -24,12 +23,10 @@ class SyncWorker(
     interface WorkerDependenciesEntryPoint {
         fun eventRepository(): EventRepository
         fun syncRepository(): SyncRepository
-        fun tokenStorage(): TokenStorage
     }
 
     private val eventRepository: EventRepository
     private val syncRepository: SyncRepository
-    private val tokenStorage: TokenStorage
 
     init {
         val entryPoint = EntryPointAccessors.fromApplication(
@@ -38,17 +35,11 @@ class SyncWorker(
         )
         eventRepository = entryPoint.eventRepository()
         syncRepository = entryPoint.syncRepository()
-        tokenStorage = entryPoint.tokenStorage()
     }
 
     override suspend fun doWork(): ListenableWorker.Result = coroutineScope {
         try {
-            val token = tokenStorage.getToken()
-            if (token == null) {
-                return@coroutineScope WorkerResult.failure()
-            }
-
-            val deviceId = inputData.getString("device_id") ?: "unknown"
+            val deviceId = inputData.getString("device_id") ?: "device-${System.currentTimeMillis()}"
             eventRepository.ensureSyncState(deviceId)
 
             val lastClock = eventRepository.getLastServerClock()
