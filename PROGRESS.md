@@ -162,3 +162,40 @@ Date: 2025-09-19
   - Debug options only appear when functions are provided (clean UI for production)
 - **Files Updated**: StatisticsScreen.kt, MainActivity.kt, SyncWorker.kt
 - **Usage**: Access via menu (three dots) → Statistics → Debug Options section
+
+## Server Production Setup (2025-11-06)
+
+### Database Initialization and Data Import
+- **Problem**: Need to initialize database with new historical data and set up server for permanent operation on headless workstation
+- **Solution**:
+  - Created `import_data.py` script that can import both CSV and JSON formats
+  - Script merges new data with existing database (non-destructive)
+  - Handles deduplication based on canonical event keys (Date, Start, End, Type, Details, Raw_Text)
+  - Properly updates server_clock for imported events
+  - Imported 2,057 new events from `complete_historical_data_20251106_141115.csv`
+  - Database now contains 4,942 total events
+- **Files Created**: `import_data.py` (comprehensive import script supporting CSV and JSON)
+
+### Systemd Service Setup
+- **Problem**: Server needs to run permanently and accept connections from local network
+- **Solution**:
+  - Created systemd service file `contentedest-baby.service`
+  - Service configured to:
+    - Run as user `blasky`
+    - Use virtual environment at `server/.venv`
+    - Bind to `0.0.0.0:8005` (accepts connections from local network)
+    - Auto-restart on failure with 10 second delay
+    - Start automatically on boot
+  - Service installed, enabled, and started successfully
+  - Server accessible at `http://192.168.86.3:8005` from local network
+- **Files Created**: `contentedest-baby.service` (systemd service file)
+- **Firewall Configuration**:
+  - Added ufw rule to allow port 8005 from local network (192.168.86.0/24)
+  - Rule: `sudo ufw allow from 192.168.86.0/24 to any port 8005 proto tcp`
+  - Firewall rule verified and active
+- **Service Management**:
+  - Status: `sudo systemctl status contentedest-baby.service`
+  - Stop: `sudo systemctl stop contentedest-baby.service`
+  - Start: `sudo systemctl start contentedest-baby.service`
+  - Restart: `sudo systemctl restart contentedest-baby.service`
+  - Logs: `sudo journalctl -u contentedest-baby.service -f`

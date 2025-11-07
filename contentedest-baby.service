@@ -1,0 +1,18 @@
+[Unit]
+Description=The Contentedest Baby Server
+After=network.target
+
+[Service]
+Type=simple
+User=blasky
+WorkingDirectory=/home/blasky/projects/contentedest-baby/server
+Environment="PATH=/home/blasky/projects/contentedest-baby/server/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="TCB_DB_PATH=/home/blasky/projects/contentedest-baby/server/db/data.db"
+ExecStart=/home/blasky/projects/contentedest-baby/server/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8005
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
