@@ -18,4 +18,7 @@ interface ApiService {
 
     @GET("/sync/pull")
     suspend fun syncPull(@Query("since") since: Long): SyncPullResponse
+
+    @GET("/app/update")
+    suspend fun getUpdateInfo(): UpdateInfoResponse
 }

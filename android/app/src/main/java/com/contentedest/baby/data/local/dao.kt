@@ -26,6 +26,15 @@ interface EventsDao {
 
     @Query("UPDATE events SET end_ts = :endTs, updated_ts = :endTs, version = version + 1 WHERE event_id = :eventId")
     suspend fun completeSleep(eventId: String, endTs: Long)
+
+    @Query("SELECT * FROM events WHERE deleted = 0 AND type = 'sleep' AND (start_ts NOT NULL OR end_ts NOT NULL) ORDER BY COALESCE(end_ts, start_ts) DESC LIMIT 1")
+    suspend fun lastSleepEvent(): EventEntity?
+
+    @Query("SELECT * FROM events WHERE deleted = 0 AND type = 'feed' AND (ts NOT NULL OR start_ts NOT NULL) ORDER BY COALESCE(ts, start_ts) DESC LIMIT 1")
+    suspend fun lastFeedEvent(): EventEntity?
+
+    @Query("SELECT * FROM events WHERE deleted = 0 AND type = 'nappy' AND ts NOT NULL ORDER BY ts DESC LIMIT 1")
+    suspend fun lastNappyEvent(): EventEntity?
 }
 
 @Dao

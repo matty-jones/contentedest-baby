@@ -44,3 +44,11 @@ class SyncPullResponse(BaseModel):
     events: List[EventDTO]
 
 
+class UpdateInfoResponse(BaseModel):
+    version_code: int
+    version_name: str
+    download_url: str
+    release_notes: Optional[str] = None
+    mandatory: bool = False
+
+

@@ -1,0 +1,218 @@
+#!/bin/bash
+
+# Automated release script for The Contentedest Baby app
+# Increments version, builds APK, and updates server configuration
+
+set -e  # Exit on error
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# File paths
+BUILD_GRADLE="android/app/build.gradle.kts"
+SERVER_MAIN="server/app/main.py"
+APK_OUTPUT="android/app/build/outputs/apk/release/app-release.apk"
+APK_DEST="server/apks/latest.apk"
+
+# Function to print colored output
+print_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Function to extract version from build.gradle.kts
+extract_version() {
+    local file="$1"
+    local version_code=$(grep -E "^\s*versionCode\s*=" "$file" | sed -E 's/.*versionCode\s*=\s*([0-9]+).*/\1/')
+    local version_name=$(grep -E "^\s*versionName\s*=" "$file" | sed -E 's/.*versionName\s*=\s*"([^"]+)".*/\1/')
+    echo "$version_code|$version_name"
+}
+
+# Function to increment minor version (e.g., 1.0 -> 1.1)
+increment_minor_version() {
+    local version="$1"
+    local major=$(echo "$version" | cut -d. -f1)
+    local minor=$(echo "$version" | cut -d. -f2)
+    
+    if [ -z "$minor" ]; then
+        minor=0
+    fi
+    
+    minor=$((minor + 1))
+    echo "$major.$minor"
+}
+
+# Function to update build.gradle.kts
+update_build_gradle() {
+    local new_version_code="$1"
+    local new_version_name="$2"
+    
+    print_info "Updating $BUILD_GRADLE..."
+    
+    # Update versionCode
+    sed -i "s/versionCode = [0-9]*/versionCode = $new_version_code/" "$BUILD_GRADLE"
+    
+    # Update versionName
+    sed -i "s/versionName = \"[^\"]*\"/versionName = \"$new_version_name\"/" "$BUILD_GRADLE"
+    
+    print_success "Updated versionCode to $new_version_code and versionName to $new_version_name"
+}
+
+# Function to update server main.py
+update_server_main() {
+    local new_version_code="$1"
+    local new_version_name="$2"
+    
+    print_info "Updating $SERVER_MAIN..."
+    
+    # Update version_code (Python format: version_code=1,  # comment)
+    sed -i "s/version_code=[0-9]*\(,\s*#.*\)\?/version_code=$new_version_code,/" "$SERVER_MAIN"
+    
+    # Update version_name (Python format: version_name="1.0",  # comment)
+    sed -i "s/version_name=\"[^\"]*\"\(,\s*#.*\)\?/version_name=\"$new_version_name\",/" "$SERVER_MAIN"
+    
+    print_success "Updated server version_code to $new_version_code and version_name to $new_version_name"
+}
+
+# Function to build APK
+build_apk() {
+    print_info "Building release APK..."
+    
+    cd android
+    
+    # Check if gradlew exists and is executable
+    if [ ! -f "./gradlew" ]; then
+        print_error "gradlew not found in android directory"
+        exit 1
+    fi
+    
+    chmod +x ./gradlew
+    
+    # Clean and build
+    print_info "Cleaning previous build..."
+    ./gradlew clean
+    
+    print_info "Building release APK (this may take a few minutes)..."
+    ./gradlew assembleRelease
+    
+    cd ..
+    
+    if [ ! -f "$APK_OUTPUT" ]; then
+        print_error "APK build failed - output file not found: $APK_OUTPUT"
+        exit 1
+    fi
+    
+    print_success "APK built successfully: $APK_OUTPUT"
+}
+
+# Function to copy APK to server
+copy_apk_to_server() {
+    print_info "Copying APK to server..."
+    
+    # Ensure apks directory exists
+    mkdir -p "$(dirname "$APK_DEST")"
+    
+    cp "$APK_OUTPUT" "$APK_DEST"
+    
+    if [ ! -f "$APK_DEST" ]; then
+        print_error "Failed to copy APK to $APK_DEST"
+        exit 1
+    fi
+    
+    local apk_size=$(du -h "$APK_DEST" | cut -f1)
+    print_success "APK copied to $APK_DEST (size: $apk_size)"
+}
+
+# Main execution
+main() {
+    print_info "Starting release process..."
+    echo ""
+    
+    # Check if build.gradle.kts exists
+    if [ ! -f "$BUILD_GRADLE" ]; then
+        print_error "build.gradle.kts not found: $BUILD_GRADLE"
+        exit 1
+    fi
+    
+    # Extract current version
+    print_info "Extracting current version from $BUILD_GRADLE..."
+    local current_versions=$(extract_version "$BUILD_GRADLE")
+    local current_version_code=$(echo "$current_versions" | cut -d'|' -f1)
+    local current_version_name=$(echo "$current_versions" | cut -d'|' -f2)
+    
+    if [ -z "$current_version_code" ] || [ -z "$current_version_name" ]; then
+        print_error "Failed to extract current version from $BUILD_GRADLE"
+        exit 1
+    fi
+    
+    print_info "Current version: Code=$current_version_code, Name=$current_version_name"
+    
+    # Increment versions
+    local new_version_code=$((current_version_code + 1))
+    local new_version_name=$(increment_minor_version "$current_version_name")
+    
+    print_info "New version: Code=$new_version_code, Name=$new_version_name"
+    echo ""
+    
+    # Confirm before proceeding
+    read -p "Continue with release? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        print_warning "Release cancelled by user"
+        exit 0
+    fi
+    echo ""
+    
+    # Step 1: Update build.gradle.kts
+    update_build_gradle "$new_version_code" "$new_version_name"
+    echo ""
+    
+    # Step 2: Build APK
+    build_apk
+    echo ""
+    
+    # Step 3: Copy APK to server
+    copy_apk_to_server
+    echo ""
+    
+    # Step 4: Update server main.py
+    update_server_main "$new_version_code" "$new_version_name"
+    echo ""
+    
+    # Summary
+    print_success "Release completed successfully!"
+    echo ""
+    echo "Summary:"
+    echo "  - Version Code: $current_version_code -> $new_version_code"
+    echo "  - Version Name: $current_version_name -> $new_version_name"
+    echo "  - APK: $APK_DEST"
+    echo ""
+    print_info "Next steps:"
+    echo "  1. Review the changes in $BUILD_GRADLE and $SERVER_MAIN"
+    echo "  2. Restart the server if it's running: sudo systemctl restart contentedest-baby.service"
+    echo "  3. Users will be prompted to update on next app launch"
+    echo ""
+}
+
+# Run main function
+main
+
