@@ -172,16 +172,32 @@ def import_growth_data(json_path: str, device_id: str) -> int:
         except Exception as e:
             print(f"WAL checkpoint warning: {e}")
         
-        # Verify the data was actually written
+        # Verify the data was actually written - try multiple methods
         final_count = db.query(GrowthData).count()
+        raw_count = db.execute(text("SELECT COUNT(*) FROM growth_data")).scalar()
+        
+        # Check what database we're actually connected to
+        db_path_check = db.execute(text("PRAGMA database_list")).fetchall()
+        
         print(f"\nImport complete:")
         print(f"  Imported: {imported_count} entries")
         print(f"  Skipped: {skipped_count} entries")
-        print(f"  Total entries in database now: {final_count}")
+        print(f"  SQLAlchemy count: {final_count}")
+        print(f"  Raw SQL count: {raw_count}")
         print(f"  Database file: {DB_PATH}")
+        print(f"  SQLite databases: {db_path_check}")
         
-        if final_count == 0 and imported_count > 0:
-            print("\nWARNING: Data was imported but database shows 0 entries!")
+        # Try to fetch a sample row
+        try:
+            sample = db.execute(text("SELECT id, category, value FROM growth_data LIMIT 1")).fetchone()
+            print(f"  Sample row: {sample}")
+        except Exception as e:
+            print(f"  Could not fetch sample: {e}")
+        
+        if final_count == 0 and raw_count == 0 and imported_count == 0:
+            print("\nNOTE: No new entries were imported (all were skipped as duplicates)")
+        elif (final_count == 0 or raw_count == 0) and (imported_count > 0 or existing_count > 0):
+            print("\nWARNING: Data should exist but database shows 0 entries!")
             print("This might indicate a database connection or transaction issue.")
         
         return imported_count
