@@ -155,8 +155,14 @@ def main():
     parser.add_argument('json_file', type=str, help='Path to JSON file with growth data')
     parser.add_argument('--device-id', type=str, default='import_device',
                        help='Device ID to use for imported entries (default: import_device)')
+    parser.add_argument('--db-path', type=str, default=None,
+                       help='Override database path (uses TCB_DB_PATH env var or server default)')
     
     args = parser.parse_args()
+    
+    # Override DB path if provided
+    if args.db_path:
+        os.environ["TCB_DB_PATH"] = args.db_path
     
     json_path = Path(args.json_file)
     if not json_path.exists():
