@@ -49,3 +49,12 @@ data class SyncPullResponse(
     @Json(name = "server_clock") val serverClock: Long,
     val events: List<EventDto>
 )
+
+@JsonClass(generateAdapter = true)
+data class UpdateInfoResponse(
+    @Json(name = "version_code") val versionCode: Int,
+    @Json(name = "version_name") val versionName: String,
+    @Json(name = "download_url") val downloadUrl: String,
+    @Json(name = "release_notes") val releaseNotes: String? = null,
+    val mandatory: Boolean = false
+)

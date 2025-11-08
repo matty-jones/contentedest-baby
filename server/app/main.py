@@ -5,10 +5,11 @@ import csv
 import os
 from pathlib import Path
 from fastapi import FastAPI, Depends, Request, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from .database import Base, engine, SessionLocal
 from .models import Device, Event
-from .schemas import PairRequest, PairResponse, EventDTO, SyncPushResponse, SyncPushResponseItem, SyncPullResponse
+from .schemas import PairRequest, PairResponse, EventDTO, SyncPushResponse, SyncPushResponseItem, SyncPullResponse, UpdateInfoResponse
 from .security import mint_token, token_hash
 from .auth import get_current_device, get_db
 from . import crud
@@ -264,5 +265,52 @@ def sync_pull(since: int = 0, db: Session = Depends(get_db)):
         ) for ev in events
     ]
     return SyncPullResponse(server_clock=current_clock, events=payload)
+
+
+@app.get("/app/update", response_model=UpdateInfoResponse)
+def get_update_info():
+    """
+    Returns the latest app version information.
+    Update this when you deploy a new APK version.
+    """
+    # TODO: Consider storing this in a config file or database for easier updates
+    # For now, hardcode the latest version info
+    # When you build a new APK, update these values and place the APK in server/apks/
+    
+    # Get the base URL from environment or use default
+    base_url = os.getenv("BASE_URL", "http://192.168.86.3:8005")
+    
+    return UpdateInfoResponse(
+        version_code=1,  # Increment this for each new release
+        version_name="1.0",  # Human-readable version
+        download_url=f"{base_url}/app/download/latest.apk",
+        release_notes="Initial release",
+        mandatory=False  # Set to True to force updates
+    )
+
+
+@app.get("/app/download/{filename}")
+def download_apk(filename: str):
+    """
+    Serves APK files from the server/apks/ directory.
+    Place your APK files in server/apks/ and name the latest one 'latest.apk'
+    """
+    apk_dir = Path(__file__).parent.parent / "apks"
+    apk_path = apk_dir / filename
+    
+    if not apk_path.exists():
+        logger.error(f"APK not found: {apk_path}")
+        return {"error": "APK not found"}, status.HTTP_404_NOT_FOUND
+    
+    if not apk_path.is_file():
+        logger.error(f"Path is not a file: {apk_path}")
+        return {"error": "Invalid path"}, status.HTTP_400_BAD_REQUEST
+    
+    logger.info(f"Serving APK: {filename}")
+    return FileResponse(
+        path=str(apk_path),
+        media_type="application/vnd.android.package-archive",
+        filename=filename
+    )
 
 

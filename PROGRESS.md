@@ -265,3 +265,41 @@ Date: 2025-09-19
   - Changed from RTSP ExoPlayer to WebView for HTML stream.
   - Stream URL: `http://192.168.86.3:1984/stream.html?src=hubble_android`.
   - Removed Media3 RTSP dependencies (can be removed from build.gradle if desired).
+
+## OTA Update System (2025-01-XX)
+
+- **Problem**: Need to push app updates to devices without using Play Store or manual APK sideloading
+- **Solution**: Implemented custom server-based OTA update system
+- **Server Changes**:
+  - Added `/app/update` endpoint returning version info (version_code, version_name, download_url, release_notes, mandatory)
+  - Added `/app/download/{filename}` endpoint to serve APK files from `server/apks/` directory
+  - Created `server/apks/` directory for storing APK files
+- **Android Changes**:
+  - Added `UpdateInfoResponse` API model for update information
+  - Added `UpdateChecker` utility class with Hilt injection:
+    - Checks for updates by comparing server version_code with app version_code
+    - Downloads APK to app cache directory
+    - Installs APK using Android's PackageInstaller API (Intent.ACTION_VIEW)
+  - Added `UpdateDialog` and `UpdateProgressDialog` Compose UI components
+  - Integrated update check into `MainActivity` - checks on app startup
+  - Update dialog appears automatically when update is available
+  - Supports mandatory updates (user cannot dismiss dialog)
+- **Files Created**:
+  - `android/app/src/main/java/com/contentedest/baby/update/UpdateChecker.kt`
+  - `android/app/src/main/java/com/contentedest/baby/ui/update/UpdateDialog.kt`
+  - `UPDATE_SYSTEM.md` (documentation)
+- **Automated Release Script**:
+  - Created `release_application` script for hands-off release process
+  - Automatically increments minor version (e.g., 1.0 → 1.1) and versionCode
+  - Updates `build.gradle.kts` and `server/app/main.py` with new versions
+  - Builds release APK and copies to `server/apks/latest.apk`
+  - Includes colored output, error handling, and user confirmation
+  - See `RELEASE_GUIDE.md` for detailed usage
+- **Usage**:
+  - **Automated (Recommended)**: Run `./release_application` from project root
+  - **Manual**: 
+    1. Build release APK with incremented `versionCode` in `build.gradle.kts`
+    2. Copy APK to `server/apks/latest.apk`
+    3. Update `version_code` in server's `/app/update` endpoint
+    4. App will prompt users to update on next launch
+- **Note**: FileProvider already configured for APK installation. No additional permissions needed (Android handles "Install from unknown sources" prompt automatically).

@@ -3,6 +3,11 @@ package com.contentedest.baby.ui.timeline
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -22,8 +27,10 @@ import androidx.compose.ui.unit.sp
 import com.contentedest.baby.data.local.EventEntity
 import com.contentedest.baby.data.local.EventType
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.delay
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
@@ -43,6 +50,15 @@ fun SnakeTimeline(
     rows: Int = 6,
 ) {
     val density = LocalDensity.current
+    
+    // Track current time and update every 10 seconds for smooth updates
+    var currentTime by remember { mutableStateOf(LocalDateTime.now()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            currentTime = LocalDateTime.now()
+            delay(10000) // Update every 10 seconds
+        }
+    }
 
     Canvas(
         modifier = modifier.pointerInput(events, currentDate) {
@@ -104,6 +120,47 @@ fun SnakeTimeline(
         }
 
         val (segments, connectors) = computeEventDrawables(events, currentDate, hoursPerRow, rows, geom)
+
+        // Draw current time indicator on the correct row
+        val nowEpoch = currentTime.atZone(ZoneId.systemDefault()).toEpochSecond()
+        val dayStart = currentDate.atTime(7, 0).atZone(ZoneId.systemDefault()).toEpochSecond()
+        val dayEnd = currentDate.plusDays(1).atTime(7, 0).atZone(ZoneId.systemDefault()).toEpochSecond()
+        if (nowEpoch >= dayStart && nowEpoch <= dayEnd) {
+            val secondsPerRow = hoursPerRow * 3600L
+            val totalSeconds = rows * secondsPerRow
+            val timeOffset = (nowEpoch - dayStart).coerceIn(0, totalSeconds)
+            val rowIndex = floor(timeOffset / secondsPerRow.toDouble()).toInt().coerceIn(0, rows - 1)
+            val secondsIntoRow = (timeOffset - rowIndex * secondsPerRow).toFloat()
+            val frac = secondsIntoRow / secondsPerRow.toFloat()
+            val goingRight = (rowIndex % 2 == 0)
+            val currentX = if (goingRight) {
+                geom.innerLeft + geom.rowWidth * frac
+            } else {
+                geom.innerRight - geom.rowWidth * frac
+            }
+            
+            // Draw indicator only on the row where current time exists
+            val rowY = geom.rowCenters[rowIndex]
+            val lineColor = Color.Red.copy(alpha = 0.8f)
+            val lineWidth = with(density) { 3.dp.toPx() }
+            val indicatorHeight = geom.trackThickness * 1.2f
+            
+            // Draw a vertical line segment on the track at the current time position
+            drawLine(
+                color = lineColor,
+                start = Offset(currentX, rowY - indicatorHeight / 2f),
+                end = Offset(currentX, rowY + indicatorHeight / 2f),
+                strokeWidth = lineWidth,
+                cap = StrokeCap.Round
+            )
+            
+            // Draw a small circle at the center of the track for better visibility
+            drawCircle(
+                color = lineColor,
+                radius = with(density) { 4.dp.toPx() },
+                center = Offset(currentX, rowY)
+            )
+        }
 
         segments.forEach { seg ->
             val color = eventColors[seg.event.type] ?: Color.LightGray

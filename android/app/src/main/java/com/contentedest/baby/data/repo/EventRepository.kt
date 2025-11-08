@@ -396,5 +396,17 @@ class EventRepository(
         val exportData = mapOf("events" to eventsForJson)
         mapAdapter.toJson(exportData)
     }
+
+    suspend fun getLastSleepEvent(): EventEntity? = withContext(Dispatchers.IO) {
+        eventsDao.lastSleepEvent()
+    }
+
+    suspend fun getLastFeedEvent(): EventEntity? = withContext(Dispatchers.IO) {
+        eventsDao.lastFeedEvent()
+    }
+
+    suspend fun getLastNappyEvent(): EventEntity? = withContext(Dispatchers.IO) {
+        eventsDao.lastNappyEvent()
+    }
 }
 
