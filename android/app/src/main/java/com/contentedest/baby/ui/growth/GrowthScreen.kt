@@ -8,6 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.contentedest.baby.data.local.GrowthCategory
 import com.contentedest.baby.data.repo.GrowthRepository
@@ -59,7 +60,13 @@ fun GrowthScreen(
                     FilterChip(
                         selected = selectedCategory == category,
                         onClick = { selectedCategory = category },
-                        label = { Text(category.name.replaceFirstChar { it.uppercase() }) },
+                        label = { 
+                            Text(
+                                text = category.name.replaceFirstChar { it.uppercase() },
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            ) 
+                        },
                         modifier = Modifier.weight(1f)
                     )
                 }
