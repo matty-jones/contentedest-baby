@@ -39,9 +39,18 @@ fun GrowthScreen(
     var growthData by remember { mutableStateOf<List<com.contentedest.baby.data.local.GrowthDataEntity>>(emptyList()) }
     val scope = rememberCoroutineScope()
 
-    // Load data when category changes
+    // Load data on initial mount and when category changes
     LaunchedEffect(selectedCategory) {
-        growthData = growthRepository.getByCategory(selectedCategory)
+        scope.launch {
+            growthData = growthRepository.getByCategory(selectedCategory)
+        }
+    }
+    
+    // Also reload when screen becomes visible (in case sync happened)
+    LaunchedEffect(Unit) {
+        scope.launch {
+            growthData = growthRepository.getByCategory(selectedCategory)
+        }
     }
 
     Box(modifier = modifier.fillMaxSize()) {

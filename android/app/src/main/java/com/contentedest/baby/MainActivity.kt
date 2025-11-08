@@ -34,6 +34,7 @@ import com.contentedest.baby.ui.stats.StatisticsScreen
 import com.contentedest.baby.ui.stats.StatisticsViewModel
 import com.contentedest.baby.ui.stats.QuickStatsBar
 import com.contentedest.baby.ui.growth.GrowthScreen
+import com.contentedest.baby.ui.growth.GrowthStatsBar
 import com.contentedest.baby.ui.nursery.NurseryScreen
 import com.contentedest.baby.update.UpdateChecker
 import com.contentedest.baby.update.UpdateResult
@@ -220,10 +221,17 @@ class MainActivity : ComponentActivity() {
                             bottomBar = {
                                 if (!showExportScreen && !showStatisticsScreen) {
                                     Column {
-                                        // Only show QuickStatsBar on Timeline tab
+                                        // Show QuickStatsBar on Timeline tab
                                         if (selectedTab == 0) {
                                             QuickStatsBar(
                                                 eventRepository = eventRepository,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
+                                        // Show GrowthStatsBar on Growth tab
+                                        if (selectedTab == 1) {
+                                            GrowthStatsBar(
+                                                growthRepository = growthRepository,
                                                 modifier = Modifier.fillMaxWidth()
                                             )
                                         }
