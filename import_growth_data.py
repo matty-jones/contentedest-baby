@@ -26,6 +26,7 @@ def _ensure_repo_root_on_path() -> None:
 
 _ensure_repo_root_on_path()
 
+# Import database modules - they will use TCB_DB_PATH if set
 try:
     from server.app.database import Base, engine, SessionLocal
     from server.app.models import GrowthData
@@ -59,11 +60,18 @@ def parse_date(date_str: str) -> int:
 
 def import_growth_data(json_path: str, device_id: str) -> int:
     """Import growth data from JSON file into database."""
+    from server.app.database import DB_PATH
+    print(f"Using database: {DB_PATH}")
+    
     # Ensure all tables exist
     Base.metadata.create_all(bind=engine)
     
     db = SessionLocal()
     try:
+        # Verify we can query the database
+        existing_count = db.query(GrowthData).count()
+        print(f"Existing growth_data entries before import: {existing_count}")
+        
         # Ensure server clock exists
         ensure_server_clock(db)
         
@@ -134,15 +142,27 @@ def import_growth_data(json_path: str, device_id: str) -> int:
                 
                 if imported_count % 10 == 0:
                     print(f"Imported {imported_count} entries...")
+                    db.commit()  # Ensure periodic commits
                 
             except Exception as e:
                 print(f"Error processing entry {entry}: {e}")
                 skipped_count += 1
                 continue
         
+        # Final commit to ensure all data is persisted
+        db.commit()
+        
+        # Verify the data was actually written
+        final_count = db.query(GrowthData).count()
         print(f"\nImport complete:")
         print(f"  Imported: {imported_count} entries")
         print(f"  Skipped: {skipped_count} entries")
+        print(f"  Total entries in database now: {final_count}")
+        print(f"  Database file: {DB_PATH}")
+        
+        if final_count == 0 and imported_count > 0:
+            print("\nWARNING: Data was imported but database shows 0 entries!")
+            print("This might indicate a database connection or transaction issue.")
         
         return imported_count
         
@@ -160,9 +180,14 @@ def main():
     
     args = parser.parse_args()
     
-    # Override DB path if provided
+    # Override DB path if provided - MUST be set before importing database modules
     if args.db_path:
         os.environ["TCB_DB_PATH"] = args.db_path
+        # Re-import database modules to pick up new path
+        import importlib
+        import server.app.database
+        importlib.reload(server.app.database)
+        from server.app.database import Base, engine, SessionLocal
     
     json_path = Path(args.json_file)
     if not json_path.exists():
