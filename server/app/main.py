@@ -362,10 +362,14 @@ def get_growth_data(category: str | None = None, since: int = 0, db: Session = D
     elif category:
         data_list = crud.get_growth_data_by_category(db, category)
     else:
-        # Get all non-deleted entries
+        # Get all non-deleted entries (when since=0 and no category)
         from sqlalchemy import select
+        # First check if table exists and has data
+        total_count = db.query(GrowthData).count()
+        logger.info(f"Total growth_data entries in DB: {total_count}")
         stmt = select(GrowthData).where(GrowthData.deleted == False).order_by(GrowthData.ts)
         data_list = list(db.scalars(stmt).all())
+        logger.info(f"Query returned {len(data_list)} non-deleted entries from growth_data table")
     
     current_clock = crud.get_clock(db)
     logger.info(f"Returning {len(data_list)} growth entries, clock={current_clock}")

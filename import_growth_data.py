@@ -59,6 +59,9 @@ def parse_date(date_str: str) -> int:
 
 def import_growth_data(json_path: str, device_id: str) -> int:
     """Import growth data from JSON file into database."""
+    # Ensure all tables exist
+    Base.metadata.create_all(bind=engine)
+    
     db = SessionLocal()
     try:
         # Ensure server clock exists
