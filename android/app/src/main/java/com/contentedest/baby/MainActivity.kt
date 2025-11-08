@@ -20,9 +20,11 @@ import androidx.compose.material3.NavigationRailItem
 import androidx.compose.ui.platform.LocalConfiguration
 import com.contentedest.baby.ui.theme.TheContentedestBabyTheme
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.contentedest.baby.data.repo.EventRepository
+import com.contentedest.baby.data.repo.GrowthRepository
 import com.contentedest.baby.sync.SyncWorker
 import com.contentedest.baby.ui.timeline.TimelineScreen
 import com.contentedest.baby.ui.timeline.TimelineViewModel
@@ -47,7 +49,14 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     @Inject lateinit var eventRepository: EventRepository
+    @Inject lateinit var growthRepository: GrowthRepository
     @Inject lateinit var updateChecker: UpdateChecker
+    
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // Activity won't recreate, but we need to handle the config change
+        // Compose will automatically recompose based on LocalConfiguration
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,8 +66,8 @@ class MainActivity : ComponentActivity() {
                     var showExportScreen by remember { mutableStateOf(false) }
                     var showStatisticsScreen by remember { mutableStateOf(false) }
 
-                    // Simple bottom nav across three tabs
-                    var selectedTab by remember { mutableStateOf(0) } // 0: Timeline, 1: Growth, 2: Nursery
+                    // Simple bottom nav across three tabs - use rememberSaveable to persist across config changes
+                    var selectedTab by rememberSaveable { mutableStateOf(0) } // 0: Timeline, 1: Growth, 2: Nursery
                     
                     // Detect orientation
                     val configuration = LocalConfiguration.current
@@ -68,12 +77,18 @@ class MainActivity : ComponentActivity() {
                     LaunchedEffect(selectedTab) {
                         if (selectedTab == 2) {
                             // Nursery tab - force landscape
+                            // Small delay to ensure state is set before orientation change
+                            kotlinx.coroutines.delay(50)
                             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
                         } else {
                             // Other tabs - allow auto-rotation
                             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                         }
                     }
+                    
+                    // Show landscape layout when Nursery is selected, even if orientation hasn't changed yet
+                    // This ensures the layout switches immediately without waiting for orientation change
+                    val showLandscapeLayout = selectedTab == 2
 
                     // Generate device ID once per app install
                     val deviceId = remember { 
@@ -150,7 +165,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    if (isLandscape && selectedTab == 2) {
+                    if (showLandscapeLayout) {
                         // Landscape mode with Nursery - use side navigation
                         Row(modifier = Modifier.fillMaxSize()) {
                             NavigationRail {
@@ -274,6 +289,8 @@ class MainActivity : ComponentActivity() {
                                 }
                                 1 -> {
                                     GrowthScreen(
+                                        growthRepository = growthRepository,
+                                        deviceId = deviceId,
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .padding(innerPadding)

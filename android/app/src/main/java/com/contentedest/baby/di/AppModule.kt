@@ -6,6 +6,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.contentedest.baby.data.local.AppDatabase
 import com.contentedest.baby.data.repo.EventRepository
+import com.contentedest.baby.data.repo.GrowthRepository
 // import com.contentedest.baby.data.repo.SyncRepository // Assuming this isn't used directly in AppModule now
 import com.contentedest.baby.net.TokenStorage
 // SyncWorker is no longer directly bound here
@@ -30,14 +31,43 @@ object AppModule {
             }
         }
 
+        // Migration 2->3: add growth_data table
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `growth_data` (
+                        `id` TEXT NOT NULL,
+                        `device_id` TEXT NOT NULL,
+                        `category` TEXT NOT NULL,
+                        `value` REAL NOT NULL,
+                        `unit` TEXT NOT NULL,
+                        `ts` INTEGER NOT NULL,
+                        `created_ts` INTEGER NOT NULL,
+                        `updated_ts` INTEGER NOT NULL,
+                        `version` INTEGER NOT NULL,
+                        `deleted` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_growth_data_category` ON `growth_data` (`category`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_growth_data_ts` ON `growth_data` (`ts`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_growth_data_device_id` ON `growth_data` (`device_id`)")
+            }
+        }
+
         return Room.databaseBuilder(context, AppDatabase::class.java, "tcb.db")
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .build()
     }
 
     @Provides
     @Singleton
     fun provideEventRepository(db: AppDatabase): EventRepository = EventRepository(db.eventsDao(), db.syncStateDao())
+
+    @Provides
+    @Singleton
+    fun provideGrowthRepository(db: AppDatabase, api: com.contentedest.baby.net.ApiService): GrowthRepository = 
+        GrowthRepository(db.growthDataDao(), api)
 
     @Provides
     @Singleton

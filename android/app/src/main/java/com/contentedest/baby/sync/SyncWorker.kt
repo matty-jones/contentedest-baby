@@ -4,8 +4,10 @@ import android.content.Context
 import androidx.work.*
 import androidx.work.ListenableWorker.Result as WorkerResult
 import com.contentedest.baby.data.repo.EventRepository
+import com.contentedest.baby.data.repo.GrowthRepository
 import com.contentedest.baby.data.repo.SyncRepository
 import com.contentedest.baby.net.EventDto
+import com.contentedest.baby.net.GrowthDataDto
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -22,10 +24,12 @@ class SyncWorker(
     @InstallIn(SingletonComponent::class)
     interface WorkerDependenciesEntryPoint {
         fun eventRepository(): EventRepository
+        fun growthRepository(): GrowthRepository
         fun syncRepository(): SyncRepository
     }
 
     private val eventRepository: EventRepository
+    private val growthRepository: GrowthRepository
     private val syncRepository: SyncRepository
 
     init {
@@ -34,6 +38,7 @@ class SyncWorker(
             WorkerDependenciesEntryPoint::class.java
         )
         eventRepository = entryPoint.eventRepository()
+        growthRepository = entryPoint.growthRepository()
         syncRepository = entryPoint.syncRepository()
     }
 
@@ -47,6 +52,9 @@ class SyncWorker(
             val pushDeferred = async { syncRepository.syncPush(emptyList()) }
             val pullResult = syncRepository.syncPull(lastClock)
             pushDeferred.await()
+
+            // Sync growth data
+            val growthPullResult = growthRepository.syncPull(since = 0)
 
             return@coroutineScope when (pullResult) {
                 is com.contentedest.baby.data.repo.Result.Success -> {
@@ -63,6 +71,22 @@ class SyncWorker(
                             android.util.Log.d("SyncWorker", "No new events to sync")
                         }
                     }
+                    
+                    // Handle growth data sync result
+                    when (growthPullResult) {
+                        is com.contentedest.baby.data.repo.Result.Success -> {
+                            val growthData = growthPullResult.data.second
+                            if (growthData.isNotEmpty()) {
+                                android.util.Log.d("SyncWorker", "Synced ${growthData.size} growth data entries")
+                            } else {
+                                android.util.Log.d("SyncWorker", "No new growth data to sync")
+                            }
+                        }
+                        is com.contentedest.baby.data.repo.Result.Failure -> {
+                            android.util.Log.e("SyncWorker", "Growth data sync failed", growthPullResult.exception)
+                        }
+                    }
+                    
                     WorkerResult.success()
                 }
                 is com.contentedest.baby.data.repo.Result.Failure -> {

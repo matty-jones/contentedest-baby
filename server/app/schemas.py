@@ -52,3 +52,27 @@ class UpdateInfoResponse(BaseModel):
     mandatory: bool = False
 
 
+class GrowthDataDTO(BaseModel):
+    id: str
+    device_id: str
+    category: Literal["weight", "height", "head"]
+    value: float
+    unit: str
+    ts: int
+    created_ts: int
+    updated_ts: int
+    version: int
+    deleted: bool = False
+
+
+class GrowthPushResponse(BaseModel):
+    server_clock: int
+    applied: bool
+    data: GrowthDataDTO
+
+
+class GrowthPullResponse(BaseModel):
+    server_clock: int
+    data: List[GrowthDataDTO]
+
+

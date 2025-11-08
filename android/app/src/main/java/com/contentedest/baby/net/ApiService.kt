@@ -21,4 +21,13 @@ interface ApiService {
 
     @GET("/app/update")
     suspend fun getUpdateInfo(): UpdateInfoResponse
+
+    @POST("/growth")
+    suspend fun pushGrowthData(@Body data: GrowthDataDto): GrowthPushResponse
+
+    @GET("/growth")
+    suspend fun pullGrowthData(
+        @Query("category") category: String? = null,
+        @Query("since") since: Long = 0
+    ): GrowthPullResponse
 }

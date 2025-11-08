@@ -85,4 +85,25 @@ data class SettingsEntity(
     val server_host: String? = null
 )
 
+@Entity(
+    tableName = "growth_data",
+    indices = [
+        Index(value = ["category"]),
+        Index(value = ["ts"]),
+        Index(value = ["device_id"])
+    ]
+)
+data class GrowthDataEntity(
+    @PrimaryKey val id: String,
+    val device_id: String,
+    val category: GrowthCategory,
+    val value: Double,
+    val unit: String,
+    val ts: Long,
+    val created_ts: Long,
+    val updated_ts: Long,
+    val version: Int,
+    val deleted: Boolean = false
+)
+
 

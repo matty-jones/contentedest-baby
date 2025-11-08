@@ -58,4 +58,25 @@ interface SettingsDao {
     suspend fun get(): SettingsEntity?
 }
 
+@Dao
+interface GrowthDataDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(data: GrowthDataEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(data: List<GrowthDataEntity>)
+
+    @Query("SELECT * FROM growth_data WHERE deleted = 0 AND category = :category ORDER BY ts ASC")
+    suspend fun getByCategory(category: GrowthCategory): List<GrowthDataEntity>
+
+    @Query("SELECT * FROM growth_data WHERE deleted = 0 ORDER BY ts ASC")
+    suspend fun getAll(): List<GrowthDataEntity>
+
+    @Query("SELECT * FROM growth_data WHERE id = :id")
+    suspend fun getById(id: String): GrowthDataEntity?
+
+    @Query("UPDATE growth_data SET deleted = 1, updated_ts = :updatedTs, version = version + 1 WHERE id = :id")
+    suspend fun softDelete(id: String, updatedTs: Long)
+}
+
 

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from sqlalchemy import Integer, String, JSON, Boolean
+from sqlalchemy import Integer, String, JSON, Boolean, Float
 from sqlalchemy.orm import Mapped, mapped_column
 from .database import Base
 
@@ -46,5 +46,21 @@ class ServerClock(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     counter: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class GrowthData(Base):
+    __tablename__ = "growth_data"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    device_id: Mapped[str] = mapped_column(String, nullable=False)
+    category: Mapped[str] = mapped_column(String, nullable=False)  # weight, height, head
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    unit: Mapped[str] = mapped_column(String, nullable=False)  # lb, in, cm
+    ts: Mapped[int] = mapped_column(Integer, nullable=False)  # timestamp of measurement
+    created_ts: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_ts: Mapped[int] = mapped_column(Integer, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    server_clock: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
