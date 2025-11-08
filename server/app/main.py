@@ -370,6 +370,8 @@ def get_growth_data(category: str | None = None, since: int = 0, db: Session = D
         from sqlalchemy import text
         import os
         logger.info(f"Database path: {DB_PATH}")
+        logger.info(f"Database path (absolute): {os.path.abspath(DB_PATH)}")
+        logger.info(f"Database path (real/resolved): {os.path.realpath(DB_PATH) if os.path.exists(DB_PATH) else 'N/A'}")
         logger.info(f"Database file exists: {os.path.exists(DB_PATH)}")
         if os.path.exists(DB_PATH):
             logger.info(f"Database file size: {os.path.getsize(DB_PATH)} bytes")
@@ -377,6 +379,13 @@ def get_growth_data(category: str | None = None, since: int = 0, db: Session = D
         # Check what database SQLite is actually using
         db_path_check = db.execute(text("PRAGMA database_list")).fetchall()
         logger.info(f"SQLite databases: {db_path_check}")
+        
+        # Also check the actual file path from SQLite
+        if db_path_check:
+            sqlite_path = db_path_check[0][2] if len(db_path_check[0]) > 2 else None
+            if sqlite_path:
+                logger.info(f"SQLite reported path (absolute): {os.path.abspath(sqlite_path) if sqlite_path != ':memory:' else ':memory:'}")
+                logger.info(f"SQLite reported path (real/resolved): {os.path.realpath(sqlite_path) if sqlite_path != ':memory:' and os.path.exists(sqlite_path) else 'N/A'}")
         
         # Check if table exists
         inspector = inspect(db.bind)
@@ -405,6 +414,36 @@ def get_growth_data(category: str | None = None, since: int = 0, db: Session = D
             # Also try without the deleted filter to see total count
             total_raw_count = db.execute(text("SELECT COUNT(*) FROM growth_data")).scalar()
             logger.info(f"Raw SQL total count (including deleted): {total_raw_count} entries")
+            
+            # Try to see what's actually in the table structure
+            try:
+                sample_rows = db.execute(text("SELECT id, category, value, deleted FROM growth_data LIMIT 5")).fetchall()
+                logger.info(f"Sample rows from growth_data: {sample_rows}")
+            except Exception as e:
+                logger.warning(f"Could not fetch sample rows: {e}")
+            
+            # Check if there are any rows at all, even with different queries
+            try:
+                any_rows = db.execute(text("SELECT 1 FROM growth_data LIMIT 1")).fetchone()
+                logger.info(f"Any rows exist check: {any_rows}")
+            except Exception as e:
+                logger.warning(f"Could not check for any rows: {e}")
+            
+            # Force a fresh connection by creating a new session
+            # This helps if there's a connection pooling or caching issue
+            from .database import SessionLocal
+            fresh_db = SessionLocal()
+            try:
+                fresh_count = fresh_db.execute(text("SELECT COUNT(*) FROM growth_data WHERE deleted = 0")).scalar()
+                logger.info(f"Fresh connection COUNT query returned: {fresh_count} entries")
+                
+                # Also try fetching sample rows with fresh connection
+                fresh_samples = fresh_db.execute(text("SELECT id, category, value FROM growth_data LIMIT 3")).fetchall()
+                logger.info(f"Fresh connection sample rows: {fresh_samples}")
+            except Exception as e:
+                logger.warning(f"Fresh connection query failed: {e}")
+            finally:
+                fresh_db.close()
             
             # Also try SQLAlchemy query
             total_count = db.query(GrowthData).count()
