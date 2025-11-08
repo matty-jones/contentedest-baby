@@ -60,14 +60,25 @@ def parse_date(date_str: str) -> int:
 
 def import_growth_data(json_path: str, device_id: str) -> int:
     """Import growth data from JSON file into database."""
-    from server.app.database import DB_PATH
+    from server.app.database import DB_PATH, SQLALCHEMY_DATABASE_URL
+    import os
+    
     print(f"Using database: {DB_PATH}")
+    print(f"Database URL: {SQLALCHEMY_DATABASE_URL}")
+    print(f"Database file exists: {os.path.exists(DB_PATH)}")
+    if os.path.exists(DB_PATH):
+        print(f"Database file size: {os.path.getsize(DB_PATH)} bytes")
     
     # Ensure all tables exist
     Base.metadata.create_all(bind=engine)
     
     db = SessionLocal()
     try:
+        # Verify database connection by checking what database we're actually connected to
+        from sqlalchemy import text
+        db_path_check = db.execute(text("PRAGMA database_list")).fetchall()
+        print(f"SQLite databases: {db_path_check}")
+        
         # Verify we can query the database
         existing_count = db.query(GrowthData).count()
         print(f"Existing growth_data entries before import: {existing_count}")
@@ -151,6 +162,15 @@ def import_growth_data(json_path: str, device_id: str) -> int:
         
         # Final commit to ensure all data is persisted
         db.commit()
+        
+        # Checkpoint WAL to ensure data is visible to other connections
+        from sqlalchemy import text
+        try:
+            db.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
+            db.commit()
+            print("WAL checkpoint completed")
+        except Exception as e:
+            print(f"WAL checkpoint warning: {e}")
         
         # Verify the data was actually written
         final_count = db.query(GrowthData).count()
