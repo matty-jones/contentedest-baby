@@ -31,6 +31,8 @@ fun AddGrowthDialog(
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
     var selectedTime by remember { mutableStateOf(LocalDateTime.now()) }
     var valueText by remember { mutableStateOf("") }
+    var lbText by remember { mutableStateOf("") }
+    var ozText by remember { mutableStateOf("") }
     var unit by remember { mutableStateOf(getDefaultUnit(category)) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
@@ -76,20 +78,50 @@ fun AddGrowthDialog(
                     Text(selectedTime.format(DateTimeFormatter.ofPattern("h:mm a")))
                 }
 
-                // Value input
-                Text(
-                    text = "Value",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                OutlinedTextField(
-                    value = valueText,
-                    onValueChange = { valueText = it },
-                    label = { Text("Enter ${category.name}") },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true,
-                    placeholder = { Text(getPlaceholder(category)) }
-                )
+                // Value input - special handling for weight with lb/oz
+                if (category == GrowthCategory.weight && unit == "lb") {
+                    Text(
+                        text = "Weight",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = lbText,
+                            onValueChange = { lbText = it },
+                            label = { Text("Pounds (lb)") },
+                            modifier = Modifier.weight(1f),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            placeholder = { Text("e.g., 10 or 10.5") }
+                        )
+                        OutlinedTextField(
+                            value = ozText,
+                            onValueChange = { ozText = it },
+                            label = { Text("Ounces (oz)") },
+                            modifier = Modifier.weight(1f),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            placeholder = { Text("Optional") }
+                        )
+                    }
+                } else {
+                    Text(
+                        text = "Value",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    OutlinedTextField(
+                        value = valueText,
+                        onValueChange = { valueText = it },
+                        label = { Text("Enter ${category.name}") },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        placeholder = { Text(getPlaceholder(category)) }
+                    )
+                }
 
                 // Unit selector
                 Text(
@@ -103,7 +135,14 @@ fun AddGrowthDialog(
                     getUnitsForCategory(category).forEach { u ->
                         FilterChip(
                             selected = unit == u,
-                            onClick = { unit = u },
+                            onClick = { 
+                                unit = u
+                                // Clear lb/oz fields when switching away from lb
+                                if (u != "lb") {
+                                    lbText = ""
+                                    ozText = ""
+                                }
+                            },
                             label = { Text(u) },
                             modifier = Modifier.weight(1f)
                         )
@@ -124,7 +163,23 @@ fun AddGrowthDialog(
                     }
                     Button(
                         onClick = {
-                            val value = valueText.toDoubleOrNull()
+                            val value = if (category == GrowthCategory.weight && unit == "lb") {
+                                // Calculate value from lb and oz
+                                val pounds = lbText.toDoubleOrNull() ?: 0.0
+                                val ounces = ozText.toDoubleOrNull() ?: 0.0
+                                
+                                // If user entered decimal in lb field (e.g., "18.5") and oz is empty,
+                                // use the decimal value directly (18.5 lb = 18 lb 8 oz, stored as 18.5)
+                                if (lbText.isNotEmpty() && ozText.isEmpty()) {
+                                    pounds
+                                } else {
+                                    // Normal case: pounds + ounces converted to decimal pounds
+                                    pounds + (ounces / 16.0)
+                                }
+                            } else {
+                                valueText.toDoubleOrNull()
+                            }
+                            
                             if (value != null && value > 0) {
                                 isLoading = true
                                 scope.launch {
@@ -142,7 +197,17 @@ fun AddGrowthDialog(
                                 }
                             }
                         },
-                        enabled = valueText.toDoubleOrNull() != null && valueText.toDoubleOrNull()!! > 0 && !isLoading,
+                        enabled = run {
+                            val isValid = if (category == GrowthCategory.weight && unit == "lb") {
+                                // For weight in lb, check if lbText is valid
+                                lbText.toDoubleOrNull() != null && lbText.toDoubleOrNull()!! >= 0 &&
+                                (ozText.isEmpty() || ozText.toDoubleOrNull() != null && ozText.toDoubleOrNull()!! >= 0) &&
+                                (lbText.isNotEmpty() || ozText.isNotEmpty())
+                            } else {
+                                valueText.toDoubleOrNull() != null && valueText.toDoubleOrNull()!! > 0
+                            }
+                            isValid && !isLoading
+                        },
                         modifier = Modifier.weight(1f)
                     ) {
                         if (isLoading) {

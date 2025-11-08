@@ -303,3 +303,33 @@ Date: 2025-09-19
     3. Update `version_code` in server's `/app/update` endpoint
     4. App will prompt users to update on next launch
 - **Note**: FileProvider already configured for APK installation. No additional permissions needed (Android handles "Install from unknown sources" prompt automatically).
+
+## Splash Screen and App Icon (2025-11-08)
+
+- **Splash Screen Implementation**:
+  - Added `androidx.core:core-splashscreen:1.0.1` dependency for Android 12+ support
+  - Created `SplashScreen.kt` Compose UI component displaying:
+    - `contentedest_baby.png` full-screen above dark background (#121212)
+    - Circular logo (`ContentedestBabyLogo.png`) overlaid at bottom
+    - Application name "Contentedest Baby" and tagline "Oooh, he's very settled."
+  - Updated `MainActivity` to show splash screen for 2 seconds on app launch
+  - Configured Android 12+ splash screen API with logo and background color
+  - Updated themes.xml to support splash screen for all Android versions
+- **App Icon**:
+  - Created launcher icons in all required densities (mdpi, hdpi, xhdpi, xxhdpi, xxxhdpi)
+  - Created round icons for devices that support them
+  - Icons generated from `ContentedestBabyLogo.png`
+  - Updated `AndroidManifest.xml` to reference new icons
+- **Files Created**:
+  - `android/app/src/main/java/com/contentedest/baby/ui/splash/SplashScreen.kt`
+  - `android/app/src/main/res/drawable/splash_baby.png`
+  - `android/app/src/main/res/drawable/logo_circular.png`
+  - `android/app/src/main/res/mipmap-*/ic_launcher.png` (all densities)
+  - `android/app/src/main/res/mipmap-*/ic_launcher_round.png` (all densities)
+  - `android/app/src/main/res/values/colors.xml`
+  - `android/app/src/main/res/values-v31/themes.xml`
+- **Files Updated**:
+  - `android/app/build.gradle.kts` (added splash screen dependency)
+  - `android/app/src/main/res/values/themes.xml` (added splash background)
+  - `android/app/src/main/java/com/contentedest/baby/MainActivity.kt` (splash screen logic)
+  - `android/app/src/main/AndroidManifest.xml` (app icon configuration)

@@ -2,9 +2,11 @@ package com.contentedest.baby
 
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
@@ -36,6 +38,7 @@ import com.contentedest.baby.ui.stats.QuickStatsBar
 import com.contentedest.baby.ui.growth.GrowthScreen
 import com.contentedest.baby.ui.growth.GrowthStatsBar
 import com.contentedest.baby.ui.nursery.NurseryScreen
+import com.contentedest.baby.ui.splash.SplashScreen
 import com.contentedest.baby.update.UpdateChecker
 import com.contentedest.baby.update.UpdateResult
 import com.contentedest.baby.ui.update.UpdateDialog
@@ -60,10 +63,30 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Install splash screen for Android 12+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            installSplashScreen()
+        }
+        
         super.onCreate(savedInstanceState)
+        
         setContent {
             TheContentedestBabyTheme {
-                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                // State to control splash screen visibility
+                var showSplash by remember { mutableStateOf(true) }
+                
+                if (showSplash) {
+                    // Show splash screen
+                    SplashScreen()
+                    
+                    // Hide splash screen after a delay
+                    LaunchedEffect(Unit) {
+                        kotlinx.coroutines.delay(2000) // 2 second splash screen
+                        showSplash = false
+                    }
+                } else {
+                    // Main app content
+                    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     var showExportScreen by remember { mutableStateOf(false) }
                     var showStatisticsScreen by remember { mutableStateOf(false) }
 
@@ -316,7 +339,8 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
-                        }
+                    }
+                }
                     }
                 }
             }
