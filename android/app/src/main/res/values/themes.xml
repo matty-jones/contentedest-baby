@@ -1,5 +1,6 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <style name="App.Theme" parent="Theme.AppCompat.Light.NoActionBar">
         <!-- You can add <item> elements here to further customize your theme -->
+        <item name="android:windowBackground">@color/splash_background</item>
     </style>
 </resources>

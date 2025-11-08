@@ -59,6 +59,7 @@ dependencies {
     androidTestImplementation(composeBom)
 
     implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("androidx.compose.ui:ui")
@@ -71,6 +72,7 @@ dependencies {
     implementation("com.patrykandpatrick.vico:compose:1.13.1")
     implementation("com.patrykandpatrick.vico:compose-m3:1.13.1")
     implementation("com.patrykandpatrick.vico:core:1.13.1")
+    implementation("com.patrykandpatrick.vico:views:1.13.1")
 
     // Media3 for RTSP nursery camera playback
     implementation("androidx.media3:media3-exoplayer:1.4.1")
