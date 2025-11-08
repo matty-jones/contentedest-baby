@@ -26,15 +26,8 @@ def _ensure_repo_root_on_path() -> None:
 
 _ensure_repo_root_on_path()
 
-# Import database modules - they will use TCB_DB_PATH if set
-try:
-    from server.app.database import Base, engine, SessionLocal
-    from server.app.models import GrowthData
-    from server.app.crud import ensure_server_clock, get_clock, next_clock, upsert_growth_data
-except Exception as import_err:  # pragma: no cover
-    print(f"Failed to import server modules: {import_err}")
-    print("Ensure you run this from the repository root and that Python can import the 'server.app' package.")
-    sys.exit(1)
+# Database modules will be imported after parsing arguments and setting TCB_DB_PATH
+# This ensures the correct database path is used
 
 
 def make_growth_id(device_id: str, category: str, ts: int) -> str:
@@ -60,7 +53,10 @@ def parse_date(date_str: str) -> int:
 
 def import_growth_data(json_path: str, device_id: str) -> int:
     """Import growth data from JSON file into database."""
-    from server.app.database import DB_PATH, SQLALCHEMY_DATABASE_URL
+    # Import here to ensure TCB_DB_PATH is set
+    from server.app.database import Base, engine, SessionLocal, DB_PATH, SQLALCHEMY_DATABASE_URL
+    from server.app.models import GrowthData
+    from server.app.crud import ensure_server_clock, get_clock, next_clock, upsert_growth_data
     import os
     
     print(f"Using database: {DB_PATH}")
@@ -218,12 +214,18 @@ def main():
     
     # Override DB path if provided - MUST be set before importing database modules
     if args.db_path:
-        os.environ["TCB_DB_PATH"] = args.db_path
-        # Re-import database modules to pick up new path
-        import importlib
-        import server.app.database
-        importlib.reload(server.app.database)
+        os.environ["TCB_DB_PATH"] = os.path.abspath(args.db_path)
+        print(f"Set TCB_DB_PATH to: {os.environ['TCB_DB_PATH']}")
+    
+    # Now import database modules - they will use TCB_DB_PATH if set
+    try:
         from server.app.database import Base, engine, SessionLocal
+        from server.app.models import GrowthData
+        from server.app.crud import ensure_server_clock, get_clock, next_clock, upsert_growth_data
+    except Exception as import_err:  # pragma: no cover
+        print(f"Failed to import server modules: {import_err}")
+        print("Ensure you run this from the repository root and that Python can import the 'server.app' package.")
+        sys.exit(1)
     
     json_path = Path(args.json_file)
     if not json_path.exists():
