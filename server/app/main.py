@@ -377,12 +377,46 @@ def get_growth_data(category: str | None = None, since: int = 0, db: Session = D
         logger.info(f"growth_data table exists: {has_growth_table}")
         
         if has_growth_table:
-            # First check if table exists and has data
+            # Try direct SQL query to bypass any SQLAlchemy session issues
+            from sqlalchemy import text
+            raw_count_result = db.execute(text("SELECT COUNT(*) FROM growth_data WHERE deleted = 0"))
+            raw_count = raw_count_result.scalar()
+            logger.info(f"Raw SQL COUNT query returned: {raw_count} entries")
+            
+            # Also try SQLAlchemy query
             total_count = db.query(GrowthData).count()
-            logger.info(f"Total growth_data entries in DB: {total_count}")
+            logger.info(f"SQLAlchemy query count: {total_count}")
+            
+            # Try raw SQL select
+            raw_select = db.execute(text("SELECT * FROM growth_data WHERE deleted = 0 ORDER BY ts"))
+            raw_rows = raw_select.fetchall()
+            logger.info(f"Raw SQL SELECT returned {len(raw_rows)} rows")
+            
+            # SQLAlchemy query
             stmt = select(GrowthData).where(GrowthData.deleted == False).order_by(GrowthData.ts)
             data_list = list(db.scalars(stmt).all())
-            logger.info(f"Query returned {len(data_list)} non-deleted entries from growth_data table")
+            logger.info(f"SQLAlchemy query returned {len(data_list)} non-deleted entries from growth_data table")
+            
+            # If SQLAlchemy returns 0 but raw SQL returns data, use raw SQL
+            if len(data_list) == 0 and len(raw_rows) > 0:
+                logger.warning("SQLAlchemy query returned 0 but raw SQL found data - using raw SQL results")
+                # Convert raw rows to GrowthData objects
+                data_list = []
+                for row in raw_rows:
+                    gd = GrowthData(
+                        id=row[0],
+                        device_id=row[1],
+                        category=row[2],
+                        value=row[3],
+                        unit=row[4],
+                        ts=row[5],
+                        created_ts=row[6],
+                        updated_ts=row[7],
+                        version=row[8],
+                        deleted=bool(row[9]),
+                        server_clock=row[10]
+                    )
+                    data_list.append(gd)
         else:
             logger.warning("growth_data table does not exist in database!")
             data_list = []
