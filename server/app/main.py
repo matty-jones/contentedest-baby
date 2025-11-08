@@ -363,13 +363,29 @@ def get_growth_data(category: str | None = None, since: int = 0, db: Session = D
         data_list = crud.get_growth_data_by_category(db, category)
     else:
         # Get all non-deleted entries (when since=0 and no category)
-        from sqlalchemy import select
-        # First check if table exists and has data
-        total_count = db.query(GrowthData).count()
-        logger.info(f"Total growth_data entries in DB: {total_count}")
-        stmt = select(GrowthData).where(GrowthData.deleted == False).order_by(GrowthData.ts)
-        data_list = list(db.scalars(stmt).all())
-        logger.info(f"Query returned {len(data_list)} non-deleted entries from growth_data table")
+        from sqlalchemy import select, inspect
+        from .database import DB_PATH
+        
+        # Log database path being used
+        logger.info(f"Database path: {DB_PATH}")
+        
+        # Check if table exists
+        inspector = inspect(db.bind)
+        tables = inspector.get_table_names()
+        logger.info(f"Tables in database: {tables}")
+        has_growth_table = 'growth_data' in tables
+        logger.info(f"growth_data table exists: {has_growth_table}")
+        
+        if has_growth_table:
+            # First check if table exists and has data
+            total_count = db.query(GrowthData).count()
+            logger.info(f"Total growth_data entries in DB: {total_count}")
+            stmt = select(GrowthData).where(GrowthData.deleted == False).order_by(GrowthData.ts)
+            data_list = list(db.scalars(stmt).all())
+            logger.info(f"Query returned {len(data_list)} non-deleted entries from growth_data table")
+        else:
+            logger.warning("growth_data table does not exist in database!")
+            data_list = []
     
     current_clock = crud.get_clock(db)
     logger.info(f"Returning {len(data_list)} growth entries, clock={current_clock}")
