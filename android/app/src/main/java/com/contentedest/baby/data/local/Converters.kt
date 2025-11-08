@@ -5,6 +5,7 @@ import androidx.room.TypeConverter
 enum class EventType { sleep, feed, nappy }
 enum class FeedMode { breast, bottle, solids }
 enum class BreastSide { left, right }
+enum class GrowthCategory { weight, height, head }
 
 class Converters {
     @TypeConverter
@@ -30,6 +31,12 @@ class Converters {
 
     @TypeConverter
     fun toBreastSide(value: String?): BreastSide? = value?.let { BreastSide.valueOf(it) }
+
+    @TypeConverter
+    fun fromGrowthCategory(value: GrowthCategory?): String? = value?.name
+
+    @TypeConverter
+    fun toGrowthCategory(value: String?): GrowthCategory? = value?.let { GrowthCategory.valueOf(it) }
 }
 
 

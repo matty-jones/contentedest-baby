@@ -58,3 +58,30 @@ data class UpdateInfoResponse(
     @Json(name = "release_notes") val releaseNotes: String? = null,
     val mandatory: Boolean = false
 )
+
+@JsonClass(generateAdapter = true)
+data class GrowthDataDto(
+    val id: String,
+    @Json(name = "device_id") val deviceId: String,
+    val category: String,  // weight, height, head
+    val value: Double,
+    val unit: String,
+    val ts: Long,
+    @Json(name = "created_ts") val createdTs: Long,
+    @Json(name = "updated_ts") val updatedTs: Long,
+    val version: Int,
+    val deleted: Boolean = false
+)
+
+@JsonClass(generateAdapter = true)
+data class GrowthPushResponse(
+    @Json(name = "server_clock") val serverClock: Long,
+    val applied: Boolean,
+    val data: GrowthDataDto
+)
+
+@JsonClass(generateAdapter = true)
+data class GrowthPullResponse(
+    @Json(name = "server_clock") val serverClock: Long,
+    val data: List<GrowthDataDto>
+)

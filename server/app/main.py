@@ -8,8 +8,8 @@ from fastapi import FastAPI, Depends, Request, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from .database import Base, engine, SessionLocal
-from .models import Device, Event
-from .schemas import PairRequest, PairResponse, EventDTO, SyncPushResponse, SyncPushResponseItem, SyncPullResponse, UpdateInfoResponse
+from .models import Device, Event, GrowthData
+from .schemas import PairRequest, PairResponse, EventDTO, SyncPushResponse, SyncPushResponseItem, SyncPullResponse, UpdateInfoResponse, GrowthDataDTO, GrowthPushResponse, GrowthPullResponse
 from .security import mint_token, token_hash
 from .auth import get_current_device, get_db
 from . import crud
@@ -312,5 +312,79 @@ def download_apk(filename: str):
         media_type="application/vnd.android.package-archive",
         filename=filename
     )
+
+
+@app.post("/growth", response_model=GrowthPushResponse)
+def create_growth_data(data: GrowthDataDTO, db: Session = Depends(get_db)):
+    """Create or update growth data entry."""
+    logger.info(f"Growth push: {data.id} ({data.category})")
+    incoming = GrowthData(
+        id=data.id,
+        device_id=data.device_id,
+        category=data.category,
+        value=data.value,
+        unit=data.unit,
+        ts=data.ts,
+        created_ts=data.created_ts,
+        updated_ts=data.updated_ts,
+        version=data.version,
+        deleted=data.deleted,
+    )
+    applied_data, new_clock = crud.upsert_growth_data(db, incoming)
+    logger.info(f"Applied growth data {applied_data.id}, new clock: {new_clock}")
+    
+    result_dto = GrowthDataDTO(
+        id=applied_data.id,
+        device_id=applied_data.device_id,
+        category=applied_data.category,
+        value=applied_data.value,
+        unit=applied_data.unit,
+        ts=applied_data.ts,
+        created_ts=applied_data.created_ts,
+        updated_ts=applied_data.updated_ts,
+        version=applied_data.version,
+        deleted=applied_data.deleted,
+    )
+    
+    return GrowthPushResponse(
+        server_clock=new_clock,
+        applied=True,
+        data=result_dto
+    )
+
+
+@app.get("/growth", response_model=GrowthPullResponse)
+def get_growth_data(category: str | None = None, since: int = 0, db: Session = Depends(get_db)):
+    """Get growth data entries, optionally filtered by category and server clock."""
+    logger.info(f"Growth pull: category={category}, since={since}")
+    if since > 0:
+        data_list = crud.select_growth_data_since(db, since, category)
+    elif category:
+        data_list = crud.get_growth_data_by_category(db, category)
+    else:
+        # Get all non-deleted entries
+        from sqlalchemy import select
+        stmt = select(GrowthData).where(GrowthData.deleted == False).order_by(GrowthData.ts)
+        data_list = list(db.scalars(stmt).all())
+    
+    current_clock = crud.get_clock(db)
+    logger.info(f"Returning {len(data_list)} growth entries, clock={current_clock}")
+    
+    payload = [
+        GrowthDataDTO(
+            id=gd.id,
+            device_id=gd.device_id,
+            category=gd.category,
+            value=gd.value,
+            unit=gd.unit,
+            ts=gd.ts,
+            created_ts=gd.created_ts,
+            updated_ts=gd.updated_ts,
+            version=gd.version,
+            deleted=gd.deleted,
+        ) for gd in data_list
+    ]
+    
+    return GrowthPullResponse(server_clock=current_clock, data=payload)
 
 

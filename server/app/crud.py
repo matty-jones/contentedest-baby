@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Iterable, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import select
-from .models import Device, Event, ServerClock
+from .models import Device, Event, ServerClock, GrowthData
 
 
 def ensure_server_clock(session: Session) -> ServerClock:
@@ -88,5 +88,53 @@ def upsert_events(session: Session, incoming_events: Iterable[Event]) -> Tuple[l
     if new_clock < sc_before:
         new_clock = sc_before
     return applied, new_clock
+
+
+def resolve_growth_data(existing: GrowthData | None, incoming: GrowthData) -> Tuple[GrowthData, bool]:
+    if existing is None:
+        return incoming, True
+    # Compare by (version, updated_ts, device_id)
+    a = (existing.version, existing.updated_ts, existing.device_id)
+    b = (incoming.version, incoming.updated_ts, incoming.device_id)
+    if b > a:
+        existing.device_id = incoming.device_id
+        existing.category = incoming.category
+        existing.value = incoming.value
+        existing.unit = incoming.unit
+        existing.ts = incoming.ts
+        existing.created_ts = incoming.created_ts
+        existing.updated_ts = incoming.updated_ts
+        existing.version = incoming.version
+        existing.deleted = incoming.deleted
+        return existing, True
+    return existing, False
+
+
+def upsert_growth_data(session: Session, incoming_data: GrowthData) -> Tuple[GrowthData, int]:
+    existing = session.get(GrowthData, incoming_data.id)
+    winner, changed = resolve_growth_data(existing, incoming_data)
+    if changed:
+        clock = next_clock(session)
+        winner.server_clock = clock
+        session.add(winner)
+        session.commit()
+        session.refresh(winner)
+    new_clock = get_clock(session)
+    return winner, new_clock
+
+
+def select_growth_data_since(session: Session, since_clock: int, category: str | None = None) -> list[GrowthData]:
+    stmt = select(GrowthData).where(GrowthData.server_clock > since_clock)
+    if category:
+        stmt = stmt.where(GrowthData.category == category)
+    return list(session.scalars(stmt).all())
+
+
+def get_growth_data_by_category(session: Session, category: str) -> list[GrowthData]:
+    stmt = select(GrowthData).where(
+        GrowthData.category == category,
+        GrowthData.deleted == False
+    ).order_by(GrowthData.ts)
+    return list(session.scalars(stmt).all())
 
 
