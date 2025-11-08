@@ -367,7 +367,16 @@ def get_growth_data(category: str | None = None, since: int = 0, db: Session = D
         from .database import DB_PATH
         
         # Log database path being used
+        from sqlalchemy import text
+        import os
         logger.info(f"Database path: {DB_PATH}")
+        logger.info(f"Database file exists: {os.path.exists(DB_PATH)}")
+        if os.path.exists(DB_PATH):
+            logger.info(f"Database file size: {os.path.getsize(DB_PATH)} bytes")
+        
+        # Check what database SQLite is actually using
+        db_path_check = db.execute(text("PRAGMA database_list")).fetchall()
+        logger.info(f"SQLite databases: {db_path_check}")
         
         # Check if table exists
         inspector = inspect(db.bind)
@@ -377,11 +386,25 @@ def get_growth_data(category: str | None = None, since: int = 0, db: Session = D
         logger.info(f"growth_data table exists: {has_growth_table}")
         
         if has_growth_table:
+            # Check WAL mode and checkpoint if needed
+            wal_mode = db.execute(text("PRAGMA journal_mode")).scalar()
+            logger.info(f"SQLite journal mode: {wal_mode}")
+            if wal_mode == "wal":
+                # Try checkpointing WAL to ensure we see latest data
+                try:
+                    checkpoint_result = db.execute(text("PRAGMA wal_checkpoint")).fetchone()
+                    logger.info(f"WAL checkpoint result: {checkpoint_result}")
+                except Exception as e:
+                    logger.warning(f"WAL checkpoint failed: {e}")
+            
             # Try direct SQL query to bypass any SQLAlchemy session issues
-            from sqlalchemy import text
             raw_count_result = db.execute(text("SELECT COUNT(*) FROM growth_data WHERE deleted = 0"))
             raw_count = raw_count_result.scalar()
             logger.info(f"Raw SQL COUNT query returned: {raw_count} entries")
+            
+            # Also try without the deleted filter to see total count
+            total_raw_count = db.execute(text("SELECT COUNT(*) FROM growth_data")).scalar()
+            logger.info(f"Raw SQL total count (including deleted): {total_raw_count} entries")
             
             # Also try SQLAlchemy query
             total_count = db.query(GrowthData).count()
