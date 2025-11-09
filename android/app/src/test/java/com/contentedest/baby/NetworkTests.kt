@@ -56,12 +56,12 @@ class NetworkTests {
             com.contentedest.baby.net.EventDto(
                 eventId = "e1",
                 type = "sleep",
-                start_ts = 1000L,
-                end_ts = 2000L,
-                created_ts = 1000L,
-                updated_ts = 2000L,
+                startTs = 1000L,
+                endTs = 2000L,
+                createdTs = 1000L,
+                updatedTs = 2000L,
                 version = 1,
-                device_id = "dev1"
+                deviceId = "dev1"
             )
         )
         val resp = kotlinx.coroutines.runBlocking { api.syncPush(events) }
