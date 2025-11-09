@@ -17,7 +17,7 @@ class EventRepositoryTest {
             .allowMainThreadQueries()
             .build()
 
-        val repo = EventRepository(db.eventsDao())
+        val repo = EventRepository(db.eventsDao(), db.syncStateDao())
         val now = 1_700_000_000L
         val eventId = repo.startSleep(now, "dev1")
         repo.stopSleep(eventId, now + 3_600)
@@ -37,7 +37,7 @@ class EventRepositoryTest {
             .allowMainThreadQueries()
             .build()
 
-        val repo = EventRepository(db.eventsDao())
+        val repo = EventRepository(db.eventsDao(), db.syncStateDao())
         val now = 1_700_000_000L
         val feedId = repo.startBreastFeed(now, "dev1", BreastSide.left)
         repo.swapBreastSide(feedId, now + 120, BreastSide.right)
