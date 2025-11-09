@@ -38,6 +38,8 @@ if repo_root not in sys.path:
 # This allows the --db-path argument to override the default path
 # This is necessary because importing models causes database.py to be imported,
 # which resolves DB_PATH at import time based on TCB_DB_PATH env var
+# However, sqlalchemy.text is safe to import at module level
+from sqlalchemy import text
 
 
 def format_timestamp(ts: Optional[int]) -> str:
@@ -161,20 +163,26 @@ def apply_fix(session, offset_seconds: int, dry_run: bool = False) -> dict:
     # Note: This table exists in Android Room database, not server database
     # But we'll check for it in case it's been synced
     try:
-        result = session.execute(
-            text("""
-                UPDATE feed_segments SET
-                    start_ts = start_ts + :offset,
-                    end_ts = end_ts + :offset
-                WHERE EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='feed_segments')
-            """),
-            {"offset": offset_seconds}
-        )
-        stats["segments_updated"] = result.rowcount
-        if stats["segments_updated"] > 0:
-            print(f"  Updated {stats['segments_updated']} feed segments")
+        # First check if table exists
+        check_result = session.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='feed_segments'")
+        ).fetchone()
+        
+        if check_result:
+            result = session.execute(
+                text("""
+                    UPDATE feed_segments SET
+                        start_ts = start_ts + :offset,
+                        end_ts = end_ts + :offset
+                """),
+                {"offset": offset_seconds}
+            )
+            stats["segments_updated"] = result.rowcount
+            if stats["segments_updated"] > 0:
+                print(f"  Updated {stats['segments_updated']} feed segments")
     except Exception as e:
-        print(f"  Note: feed_segments table not found or not accessible: {e}")
+        # Silently ignore - feed_segments is only in Android database
+        pass
     
     # Update growth_data table
     print("Updating growth_data table...")
@@ -249,7 +257,7 @@ def main():
         from server.app import database
         from server.app.database import engine, SessionLocal
         from server.app.models import Event, GrowthData
-        from sqlalchemy import text
+        # text is already imported at module level
         # Get the resolved database path
         DB_PATH = database.DB_PATH
     except Exception as import_err:
