@@ -34,14 +34,8 @@ repo_root = os.path.abspath(os.path.dirname(__file__))
 if repo_root not in sys.path:
     sys.path.insert(0, repo_root)
 
-try:
-    from server.app.database import engine, SessionLocal
-    from server.app.models import Event, GrowthData
-    from sqlalchemy import text
-except Exception as import_err:
-    print(f"Failed to import server modules: {import_err}")
-    print("Ensure you run this from the repository root and that Python can import the 'server.app' package.")
-    sys.exit(1)
+# Note: We import database modules later, after TCB_DB_PATH may be set
+# This allows the --db-path argument to override the default path
 
 
 def format_timestamp(ts: Optional[int]) -> str:
@@ -234,6 +228,19 @@ def main():
     if args.db_path:
         os.environ["TCB_DB_PATH"] = args.db_path
     
+    # Import database modules after TCB_DB_PATH may have been set
+    try:
+        from server.app import database
+        from server.app.database import engine, SessionLocal
+        from server.app.models import Event, GrowthData
+        from sqlalchemy import text
+        # Get the resolved database path
+        DB_PATH = database.DB_PATH
+    except Exception as import_err:
+        print(f"Failed to import server modules: {import_err}")
+        print("Ensure you run this from the repository root and that Python can import the 'server.app' package.")
+        return 1
+    
     # Calculate offset
     if args.offset_hours is not None:
         offset_seconds = int(args.offset_hours * 3600)
@@ -243,8 +250,17 @@ def main():
         # Default: 7 hours = 25200 seconds
         offset_seconds = 25200
     
+    # Get the actual resolved database path
+    actual_db_path = os.path.abspath(DB_PATH)
+    
     print(f"Timezone Offset Fix Script")
-    print(f"Database: {os.environ.get('TCB_DB_PATH', 'server/data.db')}")
+    print(f"Database: {actual_db_path}")
+    if not os.path.exists(actual_db_path):
+        print(f"❌ ERROR: Database file not found at: {actual_db_path}")
+        print(f"\nPlease specify the correct path using:")
+        print(f"  --db-path /path/to/data.db")
+        print(f"  or set TCB_DB_PATH environment variable")
+        return 1
     print(f"Offset: {offset_seconds} seconds ({offset_seconds / 3600:.1f} hours)")
     
     session = SessionLocal()
