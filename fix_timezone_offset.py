@@ -304,7 +304,7 @@ def main():
                 return 1
         
         # Apply fix
-        stats = apply_fix(session, offset_seconds, dry_run=False, Event=Event, GrowthData=GrowthData)
+        stats = apply_fix(session, offset_seconds, dry_run=False)
         
         # Commit changes
         session.commit()
