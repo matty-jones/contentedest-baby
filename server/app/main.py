@@ -81,7 +81,8 @@ def seed_database(db: Session):
                         continue
 
                     # Convert to epoch seconds
-                    from datetime import datetime
+                    # Note: CSV times are in local time (UTC-7), need to convert to UTC
+                    from datetime import datetime, timezone, timedelta
                     try:
                         start_datetime = datetime.strptime(f"{date_str} {start_time_str}", "%Y-%m-%d %I:%M%p")
                         end_datetime = datetime.strptime(f"{date_str} {end_time_str}", "%Y-%m-%d %I:%M%p")
@@ -94,8 +95,12 @@ def seed_database(db: Session):
                             logger.warning(f"Could not parse times for row: {row}")
                             continue
 
-                    start_ts = int(start_datetime.timestamp())
-                    end_ts = int(end_datetime.timestamp())
+                    # Treat parsed datetime as UTC-7 and convert to UTC
+                    tz_utc_minus_7 = timezone(timedelta(hours=-7))
+                    start_aware = start_datetime.replace(tzinfo=tz_utc_minus_7)
+                    end_aware = end_datetime.replace(tzinfo=tz_utc_minus_7)
+                    start_ts = int(start_aware.timestamp())
+                    end_ts = int(end_aware.timestamp())
 
                     # Map event types
                     event_type = row['Type']

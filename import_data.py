@@ -31,7 +31,12 @@ except Exception as import_err:  # pragma: no cover
 
 
 def parse_datetime(date_str: str, time_str: str) -> Optional[int]:
-    """Parse date and time strings into epoch timestamp."""
+    """
+    Parse date and time strings into epoch timestamp (UTC).
+    
+    Assumes the input datetime strings represent local time (UTC-7).
+    Converts to UTC by adding 7 hours (25200 seconds) to the local timestamp.
+    """
     time_str = (time_str or "").strip()
     if not time_str:
         return None
@@ -42,7 +47,19 @@ def parse_datetime(date_str: str, time_str: str) -> Optional[int]:
     ]
     for fmt in fmts:
         try:
-            return int(datetime.strptime(f"{date_str} {time_str}", fmt).timestamp())
+            # Parse as naive datetime (assumed to be in local timezone UTC-7)
+            naive_dt = datetime.strptime(f"{date_str} {time_str}", fmt)
+            # Convert to UTC by treating the naive datetime as UTC-7 and adding offset
+            # This is equivalent to: local_time + 7 hours = UTC
+            # We do this by getting the timestamp assuming local timezone, then adjusting
+            # Since Python's timestamp() on naive datetime uses system timezone,
+            # we need to explicitly handle UTC-7
+            from datetime import timezone, timedelta
+            # Create timezone-aware datetime in UTC-7
+            tz_utc_minus_7 = timezone(timedelta(hours=-7))
+            aware_dt = naive_dt.replace(tzinfo=tz_utc_minus_7)
+            # Convert to UTC timestamp
+            return int(aware_dt.timestamp())
         except ValueError:
             continue
     return None
