@@ -14,6 +14,8 @@ import com.patrykandpatrick.vico.compose.axis.horizontal.rememberBottomAxis
 import com.patrykandpatrick.vico.compose.axis.vertical.rememberStartAxis
 import com.patrykandpatrick.vico.compose.chart.Chart
 import com.patrykandpatrick.vico.compose.chart.line.lineChart
+import com.patrykandpatrick.vico.compose.chart.line.lineSpec
+import com.patrykandpatrick.vico.core.model.CartesianLayerRangeProvider
 import com.patrykandpatrick.vico.compose.chart.scroll.rememberChartScrollState
 import com.patrykandpatrick.vico.compose.style.ProvideChartStyle
 import com.patrykandpatrick.vico.compose.m3.style.m3ChartStyle
@@ -138,21 +140,30 @@ fun GrowthScreen(
                             text = "Latest: ${formatValue(latest.value, latest.unit)}",
                             style = MaterialTheme.typography.titleMedium
                         )
-                        if (percentile != null) {
-                            Text(
-                                text = "Percentile: ${String.format("%.1f", percentile)}th",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        if (previous != null) {
-                            // Change is calculated from the next-most-recent value
-                            val change = latest.value - previous.value
-                            Text(
-                                text = "Change: ${if (change >= 0) "+" else ""}${formatValue(change, latest.unit)}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = if (change >= 0) Color(0xFF4CAF50) else Color(0xFFF44336)
-                            )
+                        if (previous != null || percentile != null) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                if (previous != null) {
+                                    // Change is calculated from the next-most-recent value
+                                    val change = latest.value - previous.value
+                                    Text(
+                                        text = "Change: ${if (change >= 0) "+" else ""}${formatValue(change, latest.unit)}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = if (change >= 0) Color(0xFF4CAF50) else Color(0xFFF44336)
+                                    )
+                                } else {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                                if (percentile != null) {
+                                    Text(
+                                        text = "Percentile: ${String.format("%.1f", percentile)}th",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
                         }
                         Text(
                             text = "Date: ${formatDate(latest.ts)}",
@@ -217,14 +228,36 @@ fun GrowthChart(
         }
     }
 
-    // Create line chart - we'll try to set axisValuesOverrider directly on the LineChart object
-    val chart = lineChart()
+    // Get line color for the chart
+    val lineColor = remember(category) {
+        when (category) {
+            GrowthCategory.weight -> Color(0xFF2196F3)
+            GrowthCategory.height -> Color(0xFF4CAF50)
+            GrowthCategory.head -> Color(0xFFFF9800)
+        }
+    }
+
+    // Create line chart with explicit line color via lineSpec
+    // This should override any default colors
+    val chart = lineChart(
+        lines = listOf(
+            lineSpec(
+                lineColor = lineColor
+            )
+        )
+    )
     
     // Try to set rangeProvider on layers using reflection (side effect)
-    LaunchedEffect(yAxisMin, yAxisMax, chart) {
+    LaunchedEffect(yAxisMin, yAxisMax, chart, lineColor) {
         if (yAxisMin != null && yAxisMax != null) {
             try {
                 android.util.Log.d("GrowthChart", "Attempting to set rangeProvider: min=$yAxisMin, max=$yAxisMax")
+                android.util.Log.d("GrowthChart", "Chart class: ${chart.javaClass.name}")
+                android.util.Log.d("GrowthChart", "Chart superclass: ${chart.javaClass.superclass?.name}")
+                
+                // Log all fields on the chart
+                val chartFields = chart.javaClass.declaredFields
+                android.util.Log.d("GrowthChart", "Chart fields: ${chartFields.map { it.name }.joinToString()}")
                 
                 // Access the lines field (which contains the layers)
                 val linesField = chart.javaClass.getDeclaredField("lines")
@@ -232,7 +265,7 @@ fun GrowthChart(
                 val lines = linesField.get(chart)
                 android.util.Log.d("GrowthChart", "Lines type: ${lines?.javaClass?.name}")
                 
-                // Try to create a rangeProvider - check what class exists
+                // Try to create a rangeProvider - use CartesianLayerRangeProvider
                 val rangeProviderClassNames = listOf(
                     "com.patrykandpatrick.vico.core.model.CartesianLayerRangeProvider",
                     "com.patrykandpatrick.vico.core.chart.values.AxisValuesOverrider"
@@ -250,62 +283,109 @@ fun GrowthChart(
                 }
                 
                 if (rangeProviderClass != null) {
+                    // Get the interface methods to understand what we need to implement
+                    val methods = rangeProviderClass.methods
+                    android.util.Log.d("GrowthChart", "Interface methods: ${methods.map { "${it.name}(${it.parameterTypes.map { it.simpleName }.joinToString()})" }.joinToString()}")
+                    
                     val overrider = java.lang.reflect.Proxy.newProxyInstance(
                         rangeProviderClass.classLoader,
                         arrayOf(rangeProviderClass)
-                    ) { _, method, _ ->
-                        when (method.name) {
-                            "getMinY" -> yAxisMin
-                            "getMaxY" -> yAxisMax
-                            else -> null
+                    ) { proxy, method, args ->
+                        android.util.Log.d("GrowthChart", "Method called: ${method.name} with ${args?.size ?: 0} args: ${args?.joinToString()}")
+                        val result = when (method.name) {
+                            "getMinY" -> {
+                                android.util.Log.d("GrowthChart", "getMinY called, returning ${yAxisMin!!.toFloat()}")
+                                yAxisMin!!.toFloat() // Return Float, not Double
+                            }
+                            "getMaxY" -> {
+                                android.util.Log.d("GrowthChart", "getMaxY called, returning ${yAxisMax!!.toFloat()}")
+                                yAxisMax!!.toFloat() // Return Float, not Double
+                            }
+                            "getMinX" -> {
+                                android.util.Log.d("GrowthChart", "getMinX called, returning null (use default)")
+                                null
+                            }
+                            "getMaxX" -> {
+                                android.util.Log.d("GrowthChart", "getMaxX called, returning null (use default)")
+                                null
+                            }
+                            else -> {
+                                android.util.Log.d("GrowthChart", "Unknown method: ${method.name}, returning null")
+                                null
+                            }
+                        }
+                        android.util.Log.d("GrowthChart", "Method ${method.name} returning: $result (type: ${result?.javaClass?.name})")
+                        result
+                    }
+                    
+                    // Try all possible field names on the chart
+                    val chartFieldNames = listOf("axisValuesOverrider", "rangeProvider", "yAxisRangeProvider", "cartesianLayer")
+                    var chartSuccess = false
+                    for (fieldName in chartFieldNames) {
+                        try {
+                            val field = chart.javaClass.getDeclaredField(fieldName)
+                            field.isAccessible = true
+                            val fieldValue = field.get(chart)
+                            android.util.Log.d("GrowthChart", "Found field $fieldName: ${fieldValue?.javaClass?.name}")
+                            
+                            // If it's a cartesianLayer, try to set on it
+                            if (fieldName == "cartesianLayer" && fieldValue != null) {
+                                try {
+                                    val layerField = fieldValue.javaClass.getDeclaredField("rangeProvider")
+                                    layerField.isAccessible = true
+                                    layerField.set(fieldValue, overrider)
+                                    android.util.Log.d("GrowthChart", "Successfully set rangeProvider on cartesianLayer")
+                                    chartSuccess = true
+                                    break
+                                } catch (e: NoSuchFieldException) {
+                                    android.util.Log.d("GrowthChart", "rangeProvider not found on cartesianLayer")
+                                }
+                            } else {
+                                field.set(chart, overrider)
+                                android.util.Log.d("GrowthChart", "Successfully set $fieldName on chart")
+                                chartSuccess = true
+                                break
+                            }
+                        } catch (e: NoSuchFieldException) {
+                            // Try next
                         }
                     }
                     
-                    // Try to set on the chart itself first
-                    try {
-                        val axisValuesOverriderField = chart.javaClass.getDeclaredField("axisValuesOverrider")
-                        axisValuesOverriderField.isAccessible = true
-                        axisValuesOverriderField.set(chart, overrider)
-                        android.util.Log.d("GrowthChart", "Successfully set axisValuesOverrider on chart")
-                    } catch (e: NoSuchFieldException) {
-                        android.util.Log.d("GrowthChart", "axisValuesOverrider field not found on chart, trying lines")
-                        // Try to set on lines (if it's a list)
-                        if (lines is List<*>) {
-                            lines.forEach { line ->
+                    if (!chartSuccess) {
+                        android.util.Log.d("GrowthChart", "Could not set rangeProvider on chart, checking parent class")
+                        // Try parent class
+                        val parentClass = chart.javaClass.superclass
+                        if (parentClass != null) {
+                            android.util.Log.d("GrowthChart", "Checking parent class: ${parentClass.name}")
+                            val parentFields = parentClass.declaredFields
+                            android.util.Log.d("GrowthChart", "Parent fields: ${parentFields.map { it.name }.joinToString()}")
+                            for (fieldName in chartFieldNames) {
                                 try {
-                                    android.util.Log.d("GrowthChart", "Line type: ${line!!.javaClass.name}")
-                                    val lineFields = line.javaClass.declaredFields
-                                    android.util.Log.d("GrowthChart", "Line fields: ${lineFields.map { it.name }.joinToString()}")
-                                    
-                                    // Try different field names
-                                    val fieldNames = listOf("rangeProvider", "axisValuesOverrider", "yAxisRangeProvider")
-                                    var lineSuccess = false
-                                    for (fieldName in fieldNames) {
-                                        try {
-                                            val field = line.javaClass.getDeclaredField(fieldName)
-                                            field.isAccessible = true
-                                            field.set(line, overrider)
-                                            android.util.Log.d("GrowthChart", "Successfully set $fieldName on line")
-                                            lineSuccess = true
-                                            break
-                                        } catch (e: NoSuchFieldException) {
-                                            // Try next
-                                        }
-                                    }
-                                    if (!lineSuccess) {
-                                        android.util.Log.d("GrowthChart", "Could not find rangeProvider field on line")
-                                    }
-                                } catch (e: Exception) {
-                                    android.util.Log.d("GrowthChart", "Failed to set on line: ${e.message}")
+                                    val field = parentClass.getDeclaredField(fieldName)
+                                    field.isAccessible = true
+                                    field.set(chart, overrider)
+                                    android.util.Log.d("GrowthChart", "Successfully set $fieldName on parent class")
+                                    chartSuccess = true
+                                    break
+                                } catch (e: NoSuchFieldException) {
+                                    // Try next
                                 }
                             }
                         }
                     }
+                    
+                    if (!chartSuccess) {
+                        android.util.Log.w("GrowthChart", "Could not find any field to set rangeProvider")
+                    }
                 } else {
                     android.util.Log.w("GrowthChart", "Could not find rangeProvider class")
                 }
+                
+                // Don't set minY/maxY directly - it causes scaling corruption when switching categories
+                // Don't modify paint objects directly - it breaks rendering
+                // Colors should be set via entityColors in m3ChartStyle
             } catch (e: Exception) {
-                android.util.Log.w("GrowthChart", "Failed to set rangeProvider: ${e.message}")
+                android.util.Log.w("GrowthChart", "Failed to set rangeProvider: ${e.message}", e)
             }
         }
     }
@@ -326,19 +406,16 @@ fun GrowthChart(
 
     val chartScrollState = rememberChartScrollState()
 
-    // Get line color for the chart
-    val lineColor = remember(category) {
-        when (category) {
-            GrowthCategory.weight -> Color(0xFF2196F3)
-            GrowthCategory.height -> Color(0xFF4CAF50)
-            GrowthCategory.head -> Color(0xFFFF9800)
-        }
-    }
-
     // Use Vico Compose API with custom y-axis bounds and fixed x-axis labels
     ProvideChartStyle(
         chartStyle = m3ChartStyle(
-            entityColors = listOf(lineColor)
+            entityColors = listOf(
+                when (category) {
+                    GrowthCategory.weight -> Color(0xFF2196F3)
+                    GrowthCategory.height -> Color(0xFF4CAF50)
+                    GrowthCategory.head -> Color(0xFFFF9800)
+                }
+            )
         )
     ) {
         Chart(
