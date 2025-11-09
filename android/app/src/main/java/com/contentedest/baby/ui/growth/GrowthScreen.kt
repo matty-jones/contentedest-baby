@@ -6,20 +6,27 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.contentedest.baby.data.local.GrowthCategory
 import com.contentedest.baby.data.repo.GrowthRepository
-import com.patrykandpatrick.vico.compose.axis.horizontal.rememberBottomAxis
-import com.patrykandpatrick.vico.compose.axis.vertical.rememberStartAxis
-import com.patrykandpatrick.vico.compose.chart.Chart
-import com.patrykandpatrick.vico.compose.chart.line.lineChart
-import com.patrykandpatrick.vico.compose.chart.line.lineSpec
-import com.patrykandpatrick.vico.core.model.CartesianLayerRangeProvider
-import com.patrykandpatrick.vico.compose.chart.scroll.rememberChartScrollState
-import com.patrykandpatrick.vico.compose.style.ProvideChartStyle
-import com.patrykandpatrick.vico.compose.m3.style.m3ChartStyle
-import com.patrykandpatrick.vico.core.entry.entryModelOf
+import com.patrykandpatrick.vico.compose.cartesian.*
+import com.patrykandpatrick.vico.compose.cartesian.axis.*
+import com.patrykandpatrick.vico.compose.cartesian.layer.*
+import com.patrykandpatrick.vico.core.cartesian.axis.HorizontalAxis
+import com.patrykandpatrick.vico.core.cartesian.axis.VerticalAxis
+import com.patrykandpatrick.vico.core.cartesian.data.CartesianValueFormatter
+import com.patrykandpatrick.vico.core.cartesian.layer.*
+import com.patrykandpatrick.vico.core.cartesian.data.CartesianLayerRangeProvider
+import com.patrykandpatrick.vico.core.common.component.TextComponent
+import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModel
+import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
+import com.patrykandpatrick.vico.core.cartesian.data.CartesianLayerModel
+import com.patrykandpatrick.vico.core.cartesian.data.LineCartesianLayerModel
+import com.patrykandpatrick.vico.core.cartesian.layer.LineCartesianLayer
+import com.patrykandpatrick.vico.core.common.data.ExtraStore
+import com.patrykandpatrick.vico.core.common.data.MutableExtraStore
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
@@ -64,7 +71,8 @@ fun GrowthScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                GrowthCategory.values().forEach { category ->
+                // Show only weight and height categories (exclude head)
+                listOf(GrowthCategory.weight, GrowthCategory.height).forEach { category ->
                     FilterChip(
                         selected = selectedCategory == category,
                         onClick = { selectedCategory = category },
@@ -78,6 +86,20 @@ fun GrowthScreen(
                         modifier = Modifier.weight(1f)
                     )
                 }
+                // Add button in place of head category
+                FilterChip(
+                    selected = false,
+                    onClick = { showAddDialog = true },
+                    label = { 
+                        Text(
+                            text = "+",
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.titleLarge,
+                            modifier = Modifier.fillMaxWidth()
+                        ) 
+                    },
+                    modifier = Modifier.weight(1f)
+                )
             }
 
             // Chart
@@ -174,16 +196,6 @@ fun GrowthScreen(
                 }
             }
         }
-
-        // Floating Action Button
-        FloatingActionButton(
-            onClick = { showAddDialog = true },
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp)
-        ) {
-            Text("+", style = MaterialTheme.typography.titleLarge)
-        }
     }
 
     // Add dialog
@@ -209,6 +221,20 @@ fun GrowthChart(
     category: GrowthCategory,
     modifier: Modifier = Modifier
 ) {
+    if (data.isEmpty()) {
+        Box(
+            modifier = modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "No data available",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        return
+    }
+
     // Get unit for formatting
     val unit = remember(data) {
         data.firstOrNull()?.unit ?: ""
@@ -237,211 +263,73 @@ fun GrowthChart(
         }
     }
 
-    // Create line chart with explicit line color via lineSpec
-    // This should override any default colors
-    val chart = lineChart(
-        lines = listOf(
-            lineSpec(
-                lineColor = lineColor
-            )
+    // Create axis label components with proper formatting (prevents truncation)
+    val startAxisLabel = rememberAxisLabelComponent(
+        minWidth = remember { TextComponent.MinWidth.text("000") }  // Wide enough for formatted values
+    )
+
+    val bottomAxisLabel = rememberAxisLabelComponent(
+        minWidth = remember { TextComponent.MinWidth.text("00/00") }  // Wide enough for MM/dd format
+    )
+
+    // Create axes using Vico 2.1.4 API companion object functions
+    val startAxis = VerticalAxis.rememberStart(
+        label = startAxisLabel,
+        valueFormatter = CartesianValueFormatter { _, value, _ ->
+            formatAxisValue(value.toDouble(), unit, category)
+        }
+    )
+
+    val bottomAxis = HorizontalAxis.rememberBottom(
+        label = bottomAxisLabel,
+        valueFormatter = CartesianValueFormatter { _, x, _ ->
+            val index = x.toInt()
+            if (index >= 0 && index < data.size) {
+                val ts = data[index].ts
+                val instant = Instant.ofEpochSecond(ts)
+                val date = instant.atZone(ZoneId.systemDefault()).toLocalDate()
+                date.format(DateTimeFormatter.ofPattern("MM/dd"))
+            } else {
+                ""
+            }
+        },
+        itemPlacer = remember { HorizontalAxis.ItemPlacer.aligned(spacing = { 2 }) }
+    )
+
+    // Create line layer with custom Y-axis range (no forced zero) - Vico 2.1.4 API
+    val lineLayer = rememberLineCartesianLayer(
+        rangeProvider = CartesianLayerRangeProvider.fixed(
+            minY = yAxisMin,
+            maxY = yAxisMax
         )
     )
-    
-    // Try to set rangeProvider on layers using reflection (side effect)
-    LaunchedEffect(yAxisMin, yAxisMax, chart, lineColor) {
-        if (yAxisMin != null && yAxisMax != null) {
-            try {
-                android.util.Log.d("GrowthChart", "Attempting to set rangeProvider: min=$yAxisMin, max=$yAxisMax")
-                android.util.Log.d("GrowthChart", "Chart class: ${chart.javaClass.name}")
-                android.util.Log.d("GrowthChart", "Chart superclass: ${chart.javaClass.superclass?.name}")
-                
-                // Log all fields on the chart
-                val chartFields = chart.javaClass.declaredFields
-                android.util.Log.d("GrowthChart", "Chart fields: ${chartFields.map { it.name }.joinToString()}")
-                
-                // Access the lines field (which contains the layers)
-                val linesField = chart.javaClass.getDeclaredField("lines")
-                linesField.isAccessible = true
-                val lines = linesField.get(chart)
-                android.util.Log.d("GrowthChart", "Lines type: ${lines?.javaClass?.name}")
-                
-                // Try to create a rangeProvider - use CartesianLayerRangeProvider
-                val rangeProviderClassNames = listOf(
-                    "com.patrykandpatrick.vico.core.model.CartesianLayerRangeProvider",
-                    "com.patrykandpatrick.vico.core.chart.values.AxisValuesOverrider"
-                )
-                
-                var rangeProviderClass: Class<*>? = null
-                for (className in rangeProviderClassNames) {
-                    try {
-                        rangeProviderClass = Class.forName(className)
-                        android.util.Log.d("GrowthChart", "Found rangeProvider class: $className")
-                        break
-                    } catch (e: ClassNotFoundException) {
-                        // Try next
-                    }
-                }
-                
-                if (rangeProviderClass != null) {
-                    // Get the interface methods to understand what we need to implement
-                    val methods = rangeProviderClass.methods
-                    android.util.Log.d("GrowthChart", "Interface methods: ${methods.map { "${it.name}(${it.parameterTypes.map { it.simpleName }.joinToString()})" }.joinToString()}")
-                    
-                    val overrider = java.lang.reflect.Proxy.newProxyInstance(
-                        rangeProviderClass.classLoader,
-                        arrayOf(rangeProviderClass)
-                    ) { proxy, method, args ->
-                        android.util.Log.d("GrowthChart", "Method called: ${method.name} with ${args?.size ?: 0} args: ${args?.joinToString()}")
-                        val result = when (method.name) {
-                            "getMinY" -> {
-                                android.util.Log.d("GrowthChart", "getMinY called, returning ${yAxisMin!!.toFloat()}")
-                                yAxisMin!!.toFloat() // Return Float, not Double
-                            }
-                            "getMaxY" -> {
-                                android.util.Log.d("GrowthChart", "getMaxY called, returning ${yAxisMax!!.toFloat()}")
-                                yAxisMax!!.toFloat() // Return Float, not Double
-                            }
-                            "getMinX" -> {
-                                android.util.Log.d("GrowthChart", "getMinX called, returning null (use default)")
-                                null
-                            }
-                            "getMaxX" -> {
-                                android.util.Log.d("GrowthChart", "getMaxX called, returning null (use default)")
-                                null
-                            }
-                            else -> {
-                                android.util.Log.d("GrowthChart", "Unknown method: ${method.name}, returning null")
-                                null
-                            }
-                        }
-                        android.util.Log.d("GrowthChart", "Method ${method.name} returning: $result (type: ${result?.javaClass?.name})")
-                        result
-                    }
-                    
-                    // Try all possible field names on the chart
-                    val chartFieldNames = listOf("axisValuesOverrider", "rangeProvider", "yAxisRangeProvider", "cartesianLayer")
-                    var chartSuccess = false
-                    for (fieldName in chartFieldNames) {
-                        try {
-                            val field = chart.javaClass.getDeclaredField(fieldName)
-                            field.isAccessible = true
-                            val fieldValue = field.get(chart)
-                            android.util.Log.d("GrowthChart", "Found field $fieldName: ${fieldValue?.javaClass?.name}")
-                            
-                            // If it's a cartesianLayer, try to set on it
-                            if (fieldName == "cartesianLayer" && fieldValue != null) {
-                                try {
-                                    val layerField = fieldValue.javaClass.getDeclaredField("rangeProvider")
-                                    layerField.isAccessible = true
-                                    layerField.set(fieldValue, overrider)
-                                    android.util.Log.d("GrowthChart", "Successfully set rangeProvider on cartesianLayer")
-                                    chartSuccess = true
-                                    break
-                                } catch (e: NoSuchFieldException) {
-                                    android.util.Log.d("GrowthChart", "rangeProvider not found on cartesianLayer")
-                                }
-                            } else {
-                                field.set(chart, overrider)
-                                android.util.Log.d("GrowthChart", "Successfully set $fieldName on chart")
-                                chartSuccess = true
-                                break
-                            }
-                        } catch (e: NoSuchFieldException) {
-                            // Try next
-                        }
-                    }
-                    
-                    if (!chartSuccess) {
-                        android.util.Log.d("GrowthChart", "Could not set rangeProvider on chart, checking parent class")
-                        // Try parent class
-                        val parentClass = chart.javaClass.superclass
-                        if (parentClass != null) {
-                            android.util.Log.d("GrowthChart", "Checking parent class: ${parentClass.name}")
-                            val parentFields = parentClass.declaredFields
-                            android.util.Log.d("GrowthChart", "Parent fields: ${parentFields.map { it.name }.joinToString()}")
-                            for (fieldName in chartFieldNames) {
-                                try {
-                                    val field = parentClass.getDeclaredField(fieldName)
-                                    field.isAccessible = true
-                                    field.set(chart, overrider)
-                                    android.util.Log.d("GrowthChart", "Successfully set $fieldName on parent class")
-                                    chartSuccess = true
-                                    break
-                                } catch (e: NoSuchFieldException) {
-                                    // Try next
-                                }
-                            }
-                        }
-                    }
-                    
-                    if (!chartSuccess) {
-                        android.util.Log.w("GrowthChart", "Could not find any field to set rangeProvider")
-                    }
-                } else {
-                    android.util.Log.w("GrowthChart", "Could not find rangeProvider class")
-                }
-                
-                // Don't set minY/maxY directly - it causes scaling corruption when switching categories
-                // Don't modify paint objects directly - it breaks rendering
-                // Colors should be set via entityColors in m3ChartStyle
-            } catch (e: Exception) {
-                android.util.Log.w("GrowthChart", "Failed to set rangeProvider: ${e.message}", e)
-            }
+
+    // Create chart with line layer and axes using Vico 2.1.4 API
+    val chart = rememberCartesianChart(
+        lineLayer,
+        startAxis = startAxis,
+        bottomAxis = bottomAxis
+    )
+
+    // Create chart model with data
+    val chartModel = remember(data) {
+        val entries = data.mapIndexed { index, entity ->
+            LineCartesianLayerModel.Entry(index.toFloat(), entity.value.toFloat())
         }
-    }
-
-    // Prepare entries for chart
-    val entries = remember(data) {
-        data.mapIndexed { index, entity ->
-            com.patrykandpatrick.vico.core.entry.FloatEntry(
-                x = index.toFloat(),
-                y = entity.value.toFloat()
-            )
-        }
-    }
-
-    val chartEntryModel = remember(entries) {
-        entryModelOf(entries)
-    }
-
-    val chartScrollState = rememberChartScrollState()
-
-    // Use Vico Compose API with custom y-axis bounds and fixed x-axis labels
-    ProvideChartStyle(
-        chartStyle = m3ChartStyle(
-            entityColors = listOf(
-                when (category) {
-                    GrowthCategory.weight -> Color(0xFF2196F3)
-                    GrowthCategory.height -> Color(0xFF4CAF50)
-                    GrowthCategory.head -> Color(0xFFFF9800)
-                }
-            )
-        )
-    ) {
-        Chart(
-            chart = chart,
-            model = chartEntryModel,
-            modifier = modifier.padding(16.dp),
-            startAxis = rememberStartAxis(
-                valueFormatter = { value, _ ->
-                    formatAxisValue(value.toDouble(), unit, category)
-                }
-            ),
-            bottomAxis = rememberBottomAxis(
-                valueFormatter = { value, _ ->
-                    val index = value.toInt()
-                    // Show only every other tick to halve the number
-                    if (index >= 0 && index < data.size && index % 2 == 0) {
-                        formatDateShort(data[index].ts)
-                    } else {
-                        ""
-                    }
-                },
-                labelRotationDegrees = -45f // Rotate labels -45 degrees to prevent truncation
-            ),
-            chartScrollState = chartScrollState
+        CartesianChartModel(
+            models = listOf(LineCartesianLayerModel(listOf(entries)))
         )
     }
+
+    val chartScrollState = rememberVicoScrollState()
+
+    // Use Vico 2.1.4 API with axes now visible
+    CartesianChartHost(
+        chart = chart,
+        model = chartModel,
+        modifier = modifier.padding(16.dp),
+        scrollState = chartScrollState
+    )
 }
 
 fun formatAxisValue(value: Double, unit: String, category: GrowthCategory): String {
