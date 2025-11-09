@@ -372,3 +372,47 @@ The app now has:
 - Complete chart implementation foundation ready
 
 The chart placeholder shows the successful upgrade status and data readiness. All core Vico 2.1.4 APIs have been identified and are available for chart implementation.
+
+## Timezone Fix (2025-11-05)
+
+### Problem
+Events were displaying with a 7-hour offset (e.g., 7:27 PM showing as 12:27 PM). Root cause: timestamps were imported/stored as if local time (UTC-7) was UTC, then the Android app correctly converted them from UTC to local time, causing a double conversion.
+
+### Solution
+1. **Created `fix_timezone_offset.py` migration script**:
+   - Adds configurable offset (default 7 hours = 25200 seconds) to all timestamp fields
+   - Updates `events` table: `start_ts`, `end_ts`, `ts`, `created_ts`, `updated_ts`
+   - Updates `growth_data` table: `ts`, `created_ts`, `updated_ts`
+   - Updates `feed_segments` table if present: `start_ts`, `end_ts`
+   - Includes dry-run mode to preview changes before applying
+   - Usage: `./fix_timezone_offset.py --dry-run` to preview, then `./fix_timezone_offset.py` to apply
+
+2. **Fixed import scripts to handle timezones correctly**:
+   - Updated `import_data.py` `parse_datetime()` to explicitly treat input as UTC-7 and convert to UTC
+   - Updated `migrate_database.py` with same timezone-aware parsing
+   - Updated `server/app/main.py` seed function with same fix
+   - All future imports will correctly convert local time (UTC-7) to UTC timestamps
+
+### Files Created/Modified
+- **Created**: `fix_timezone_offset.py` (migration script)
+- **Modified**: `import_data.py` (timezone-aware datetime parsing)
+- **Modified**: `migrate_database.py` (timezone-aware datetime parsing)
+- **Modified**: `server/app/main.py` (timezone-aware datetime parsing in seed function)
+
+### Usage
+To fix existing database on home server:
+```bash
+# Preview changes (dry run)
+./fix_timezone_offset.py --dry-run
+
+# Apply fix with default 7-hour offset
+./fix_timezone_offset.py
+
+# Apply with custom offset (if different timezone)
+./fix_timezone_offset.py --offset-hours 7
+
+# Use custom database path
+./fix_timezone_offset.py --db-path /path/to/data.db
+```
+
+**Note**: After running migration, Android app will need to re-sync from server to get corrected timestamps.

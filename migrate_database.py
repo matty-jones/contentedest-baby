@@ -29,6 +29,12 @@ except Exception as import_err:  # pragma: no cover
 
 
 def parse_datetime(date_str: str, time_str: str) -> Optional[int]:
+    """
+    Parse date and time strings into epoch timestamp (UTC).
+    
+    Assumes the input datetime strings represent local time (UTC-7).
+    Converts to UTC by treating the datetime as UTC-7 and converting to UTC.
+    """
     time_str = (time_str or "").strip()
     if not time_str:
         return None
@@ -39,7 +45,14 @@ def parse_datetime(date_str: str, time_str: str) -> Optional[int]:
     ]
     for fmt in fmts:
         try:
-            return int(datetime.strptime(f"{date_str} {time_str}", fmt).timestamp())
+            # Parse as naive datetime (assumed to be in local timezone UTC-7)
+            naive_dt = datetime.strptime(f"{date_str} {time_str}", fmt)
+            # Convert to UTC by treating the naive datetime as UTC-7
+            from datetime import timezone, timedelta
+            tz_utc_minus_7 = timezone(timedelta(hours=-7))
+            aware_dt = naive_dt.replace(tzinfo=tz_utc_minus_7)
+            # Convert to UTC timestamp
+            return int(aware_dt.timestamp())
         except ValueError:
             continue
     return None
