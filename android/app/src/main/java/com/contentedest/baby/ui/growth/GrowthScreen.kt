@@ -28,6 +28,7 @@ import com.patrykandpatrick.vico.core.cartesian.layer.LineCartesianLayer
 import com.patrykandpatrick.vico.core.common.data.ExtraStore
 import com.patrykandpatrick.vico.core.common.data.MutableExtraStore
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -264,6 +265,7 @@ fun GrowthChart(
     }
 
     // Create axis label components with proper formatting (prevents truncation)
+    // TODO: Set axis label color to white - need to find correct Vico 2.1.4 API
     val startAxisLabel = rememberAxisLabelComponent(
         minWidth = remember { TextComponent.MinWidth.text("000") }  // Wide enough for formatted values
     )
@@ -273,10 +275,15 @@ fun GrowthChart(
     )
 
     // Create axes using Vico 2.1.4 API companion object functions
+    // Note: Color will be set via Material3 theme or chart style
     val startAxis = VerticalAxis.rememberStart(
         label = startAxisLabel,
         valueFormatter = CartesianValueFormatter { _, value, _ ->
             formatAxisValue(value.toDouble(), unit, category)
+        },
+        itemPlacer = remember { 
+            // Place ticks at integer values (step size of 1.0)
+            VerticalAxis.ItemPlacer.step(step = { 1.0 })
         }
     )
 
@@ -287,7 +294,8 @@ fun GrowthChart(
             if (index >= 0 && index < data.size) {
                 val ts = data[index].ts
                 val instant = Instant.ofEpochSecond(ts)
-                val date = instant.atZone(ZoneId.systemDefault()).toLocalDate()
+                // Use UTC to match server timezone (database is on workstation at 192.168.86.3)
+                val date = instant.atZone(ZoneId.of("UTC")).toLocalDate()
                 date.format(DateTimeFormatter.ofPattern("MM/dd"))
             } else {
                 ""
@@ -335,15 +343,15 @@ fun GrowthChart(
 fun formatAxisValue(value: Double, unit: String, category: GrowthCategory): String {
     return when {
         category == GrowthCategory.weight && unit == "lb" -> {
-            val pounds = value.toInt()
-            val ounces = ((value - pounds) * 16).toInt()
-            if (ounces > 0) {
-                "${pounds}lb ${ounces}oz"
-            } else {
-                "${pounds}lb"
-            }
+            // Round to nearest integer pound for axis ticks
+            val pounds = value.roundToInt()
+            "${pounds}lb"
         }
-        unit == "in" -> String.format("%.1f in", value)
+        unit == "in" -> {
+            // Round to nearest integer inch for axis ticks
+            val inches = value.roundToInt()
+            "${inches}in"
+        }
         unit == "cm" -> String.format("%.1f cm", value)
         else -> String.format("%.2f", value)
     }
