@@ -34,10 +34,10 @@ repo_root = os.path.abspath(os.path.dirname(__file__))
 if repo_root not in sys.path:
     sys.path.insert(0, repo_root)
 
-# Note: We import database connection modules later, after TCB_DB_PATH may be set
+# Note: We import ALL database modules later, after TCB_DB_PATH may be set
 # This allows the --db-path argument to override the default path
-# Models can be imported at module level since they don't depend on DB path
-from server.app.models import Event, GrowthData
+# This is necessary because importing models causes database.py to be imported,
+# which resolves DB_PATH at import time based on TCB_DB_PATH env var
 
 
 def format_timestamp(ts: Optional[int]) -> str:
@@ -51,7 +51,7 @@ def format_timestamp(ts: Optional[int]) -> str:
         return str(ts)
 
 
-def preview_changes(session, offset_seconds: int) -> tuple[int, int]:
+def preview_changes(session, Event, GrowthData, offset_seconds: int) -> tuple[int, int]:
     """Preview changes that would be made."""
     events = session.query(Event).all()
     growth_data = session.query(GrowthData).all()
@@ -133,7 +133,7 @@ def apply_fix(session, offset_seconds: int, dry_run: bool = False) -> dict:
     
     if dry_run:
         print("\n=== DRY RUN MODE - No changes will be applied ===\n")
-        preview_changes(session, offset_seconds)
+        # Event and GrowthData are passed from main() where they're imported
         return stats
     
     print(f"\n=== APPLYING FIX (offset: {offset_seconds} seconds) ===\n")
@@ -226,15 +226,28 @@ def main():
     
     args = parser.parse_args()
     
-    # Set database path if provided
+    # CRITICAL: Set database path BEFORE importing any database modules
+    # This is because importing models causes database.py to be imported,
+    # which reads TCB_DB_PATH at import time
     if args.db_path:
-        os.environ["TCB_DB_PATH"] = args.db_path
+        # Convert to absolute path to ensure consistency
+        db_path = os.path.abspath(args.db_path)
+        os.environ["TCB_DB_PATH"] = db_path
+        print(f"Setting TCB_DB_PATH to: {db_path}")
     
-    # Import database modules after TCB_DB_PATH may have been set
+    # Now import database modules - they will use TCB_DB_PATH if set
     try:
+        # Force reload of database module if it was already imported
+        import sys
+        if 'server.app.database' in sys.modules:
+            del sys.modules['server.app.database']
+        if 'server.app' in sys.modules:
+            del sys.modules['server.app']
+        if 'server.app.models' in sys.modules:
+            del sys.modules['server.app.models']
+        
         from server.app import database
         from server.app.database import engine, SessionLocal
-        # Re-import models to ensure they're available (in case initial import failed)
         from server.app.models import Event, GrowthData
         from sqlalchemy import text
         # Get the resolved database path
@@ -272,14 +285,14 @@ def main():
     try:
         # Preview changes
         if args.dry_run:
-            preview_changes(session, offset_seconds)
+            preview_changes(session, Event, GrowthData, offset_seconds)
             print("\n=== DRY RUN COMPLETE ===")
             print("Run without --dry-run to apply changes")
             return 0
         
         # Show preview before applying
         print("\n" + "="*60)
-        preview_changes(session, offset_seconds)
+        preview_changes(session, Event, GrowthData, offset_seconds)
         print("="*60)
         
         # Confirm before applying
@@ -291,7 +304,7 @@ def main():
                 return 1
         
         # Apply fix
-        stats = apply_fix(session, offset_seconds, dry_run=False)
+        stats = apply_fix(session, offset_seconds, dry_run=False, Event=Event, GrowthData=GrowthData)
         
         # Commit changes
         session.commit()
