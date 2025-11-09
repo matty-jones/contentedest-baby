@@ -14,6 +14,9 @@ import com.contentedest.baby.data.repo.GrowthRepository
 import com.patrykandpatrick.vico.compose.cartesian.*
 import com.patrykandpatrick.vico.compose.cartesian.axis.*
 import com.patrykandpatrick.vico.compose.cartesian.layer.*
+import com.patrykandpatrick.vico.compose.m3.*
+import com.patrykandpatrick.vico.compose.common.component.rememberTextComponent
+import androidx.compose.ui.unit.sp
 import com.patrykandpatrick.vico.core.cartesian.axis.HorizontalAxis
 import com.patrykandpatrick.vico.core.cartesian.axis.VerticalAxis
 import com.patrykandpatrick.vico.core.cartesian.data.CartesianValueFormatter
@@ -264,20 +267,12 @@ fun GrowthChart(
         }
     }
 
-    // Create axis label components with proper formatting (prevents truncation)
-    // TODO: Set axis label color to white - need to find correct Vico 2.1.4 API
-    val startAxisLabel = rememberAxisLabelComponent(
-        minWidth = remember { TextComponent.MinWidth.text("000") }  // Wide enough for formatted values
-    )
-
-    val bottomAxisLabel = rememberAxisLabelComponent(
-        minWidth = remember { TextComponent.MinWidth.text("00/00") }  // Wide enough for MM/dd format
-    )
-
-    // Create axes using Vico 2.1.4 API companion object functions
-    // Note: Color will be set via Material3 theme or chart style
+    // Create axes using Vico 2.1.4 API companion object functions with white axis labels
     val startAxis = VerticalAxis.rememberStart(
-        label = startAxisLabel,
+        label = rememberTextComponent(
+            color = Color.White,
+            textSize = 12.sp
+        ),
         valueFormatter = CartesianValueFormatter { _, value, _ ->
             formatAxisValue(value.toDouble(), unit, category)
         },
@@ -288,7 +283,10 @@ fun GrowthChart(
     )
 
     val bottomAxis = HorizontalAxis.rememberBottom(
-        label = bottomAxisLabel,
+        label = rememberTextComponent(
+            color = Color.White,
+            textSize = 12.sp
+        ),
         valueFormatter = CartesianValueFormatter { _, x, _ ->
             val index = x.toInt()
             if (index >= 0 && index < data.size) {
