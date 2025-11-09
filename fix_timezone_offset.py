@@ -34,8 +34,10 @@ repo_root = os.path.abspath(os.path.dirname(__file__))
 if repo_root not in sys.path:
     sys.path.insert(0, repo_root)
 
-# Note: We import database modules later, after TCB_DB_PATH may be set
+# Note: We import database connection modules later, after TCB_DB_PATH may be set
 # This allows the --db-path argument to override the default path
+# Models can be imported at module level since they don't depend on DB path
+from server.app.models import Event, GrowthData
 
 
 def format_timestamp(ts: Optional[int]) -> str:
@@ -232,6 +234,7 @@ def main():
     try:
         from server.app import database
         from server.app.database import engine, SessionLocal
+        # Re-import models to ensure they're available (in case initial import failed)
         from server.app.models import Event, GrowthData
         from sqlalchemy import text
         # Get the resolved database path
@@ -239,6 +242,8 @@ def main():
     except Exception as import_err:
         print(f"Failed to import server modules: {import_err}")
         print("Ensure you run this from the repository root and that Python can import the 'server.app' package.")
+        import traceback
+        traceback.print_exc()
         return 1
     
     # Calculate offset
