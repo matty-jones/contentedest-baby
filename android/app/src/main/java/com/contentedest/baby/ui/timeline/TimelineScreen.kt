@@ -33,11 +33,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.platform.LocalContext
 import com.contentedest.baby.data.local.EventEntity
 import com.contentedest.baby.data.local.EventType
 import com.contentedest.baby.data.local.FeedMode
 import com.contentedest.baby.data.repo.EventRepository
 import com.contentedest.baby.domain.TimeRules
+import com.contentedest.baby.sync.SyncWorker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -69,6 +71,7 @@ fun TimelineScreen(
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val events by vm.events.collectAsState()
     var currentDate by remember { mutableStateOf(date) }
 
@@ -163,6 +166,7 @@ fun TimelineScreen(
                 initialTime = selectedTime!!,
                 currentDate = currentDate,
                 eventRepository = eventRepository,
+                deviceId = deviceId,
                 onDismiss = { 
                     showAddEventDialog = false
                     selectedTime = null
@@ -170,9 +174,11 @@ fun TimelineScreen(
                 onEventCreated = {
                     showAddEventDialog = false
                     selectedTime = null
-                    // Reload events
+                    // Reload events and trigger sync
                     scope.launch {
                         vm.load(currentDate)
+                        // Trigger immediate sync to push the new event to server
+                        SyncWorker.triggerImmediateSync(context, deviceId)
                     }
                 }
             )
@@ -655,6 +661,7 @@ fun AddEventDialog(
     initialTime: LocalDateTime,
     currentDate: LocalDate,
     eventRepository: EventRepository,
+    deviceId: String,
     onDismiss: () -> Unit,
     onEventCreated: () -> Unit
 ) {
@@ -674,6 +681,11 @@ fun AddEventDialog(
         val duration = java.time.Duration.between(startTime, endTime)
         durationHours = duration.toHours().toInt()
         durationMinutes = (duration.toMinutes() % 60).toInt()
+    }
+    
+    // Update end time when start time changes (maintain current duration)
+    LaunchedEffect(startTime) {
+        endTime = startTime.plusHours(durationHours.toLong()).plusMinutes(durationMinutes.toLong())
     }
     
     // Update end time when duration changes
@@ -816,7 +828,8 @@ fun AddEventDialog(
                                     details = selectedDetails,
                                     startTime = startTime,
                                     endTime = endTime,
-                                    eventRepository = eventRepository
+                                    eventRepository = eventRepository,
+                                    deviceId = deviceId
                                 )
                                 onEventCreated()
                             }
@@ -1057,7 +1070,7 @@ fun DurationPickerDialog(
 fun getDetailsForEventType(eventType: EventType): List<String> {
     return when (eventType) {
         EventType.sleep -> listOf("Crib", "Arms", "Stroller")
-        EventType.feed -> listOf("L&R*", "L", "R", "L&R*", "Bottle", "Solids")
+        EventType.feed -> listOf("L&R*", "L", "R", "*L&R", "Bottle", "Solids")
         EventType.nappy -> listOf("Dirty", "Wet", "Mixed")
     }
 }
@@ -1091,15 +1104,16 @@ suspend fun createEvent(
     details: String?,
     startTime: LocalDateTime,
     endTime: LocalDateTime,
-    eventRepository: EventRepository
+    eventRepository: EventRepository,
+    deviceId: String
 ) {
-    val deviceId = "device-${System.currentTimeMillis()}" // TODO: Get actual device ID
     val startTimestamp = startTime.atZone(ZoneId.systemDefault()).toEpochSecond()
     val endTimestamp = endTime.atZone(ZoneId.systemDefault()).toEpochSecond()
     
     when (eventType) {
         EventType.sleep -> {
-            eventRepository.createSleep(startTimestamp, deviceId, details)
+            // Use insertSleepSpan to create a sleep event with both start and end times
+            eventRepository.insertSleepSpan(deviceId, startTimestamp, endTimestamp, details, null)
         }
         EventType.feed -> {
             val feedMode = when (details) {
@@ -1107,7 +1121,23 @@ suspend fun createEvent(
                 "Solids" -> FeedMode.solids
                 else -> FeedMode.breast
             }
-            eventRepository.startFeed(startTimestamp, deviceId, feedMode, details)
+            if (feedMode == FeedMode.breast) {
+                // For breast feeds, determine the breast side from details
+                val side = when (details) {
+                    "L", "L&R*", "*L&R" -> com.contentedest.baby.data.local.BreastSide.left
+                    "R" -> com.contentedest.baby.data.local.BreastSide.right
+                    else -> com.contentedest.baby.data.local.BreastSide.left // Default to left
+                }
+                // Create a breast feed event with a single segment
+                eventRepository.insertBreastFeed(
+                    deviceId,
+                    listOf(Triple(side, startTimestamp, endTimestamp)),
+                    details
+                )
+            } else {
+                // For bottle and solids, create a feed event with start and end times
+                eventRepository.insertFeedSpan(deviceId, startTimestamp, endTimestamp, feedMode, details, null)
+            }
         }
         EventType.nappy -> {
             eventRepository.createNappy(startTimestamp, deviceId, details ?: "Unknown", null)

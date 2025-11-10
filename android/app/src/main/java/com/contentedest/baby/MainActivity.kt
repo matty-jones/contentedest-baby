@@ -300,7 +300,8 @@ class MainActivity : ComponentActivity() {
                                     onForceRepair = null, // No longer needed
                                     onForceSync = {
                                         SyncWorker.triggerImmediateSync(this@MainActivity, deviceId)
-                                    }
+                                    },
+                                    updateChecker = updateChecker
                                 )
                             }
                         } else {

@@ -35,6 +35,9 @@ interface EventsDao {
 
     @Query("SELECT * FROM events WHERE deleted = 0 AND type = 'nappy' AND ts NOT NULL ORDER BY ts DESC LIMIT 1")
     suspend fun lastNappyEvent(): EventEntity?
+
+    @Query("SELECT * FROM events WHERE deleted = 0 ORDER BY created_ts ASC")
+    suspend fun getAllEvents(): List<EventEntity>
 }
 
 @Dao
