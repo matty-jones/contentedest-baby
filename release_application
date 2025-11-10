@@ -19,7 +19,7 @@ cd "$SCRIPT_DIR"
 # File paths
 BUILD_GRADLE="android/app/build.gradle.kts"
 SERVER_MAIN="server/app/main.py"
-APK_OUTPUT="android/app/build/outputs/apk/release/app-release.apk"
+APK_OUTPUT="android/app/build/outputs/apk/release/app-release-unsigned.apk"
 APK_DEST="server/apks/latest.apk"
 
 # Function to print colored output
@@ -106,6 +106,16 @@ build_apk() {
     fi
     
     chmod +x ./gradlew
+    
+    # Set JAVA_HOME to Java 17 if not already set
+    if [ -z "$JAVA_HOME" ] || [ ! -d "$JAVA_HOME" ]; then
+        if [ -d "/usr/lib/jvm/java-17-openjdk-amd64" ]; then
+            export JAVA_HOME="/usr/lib/jvm/java-17-openjdk-amd64"
+            print_info "Set JAVA_HOME to Java 17: $JAVA_HOME"
+        else
+            print_warning "Java 17 not found at /usr/lib/jvm/java-17-openjdk-amd64"
+        fi
+    fi
     
     # Clean and build
     print_info "Cleaning previous build..."
