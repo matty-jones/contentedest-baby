@@ -49,7 +49,11 @@ class SyncWorker(
 
             val lastClock = eventRepository.getLastServerClock()
 
-            val pushDeferred = async { syncRepository.syncPush(emptyList()) }
+            // Get all local events and convert them to DTOs for pushing
+            val eventsToPush = eventRepository.getAllEventsAsDtos()
+            android.util.Log.d("SyncWorker", "Pushing ${eventsToPush.size} local events to server")
+
+            val pushDeferred = async { syncRepository.syncPush(eventsToPush) }
             val pullResult = syncRepository.syncPull(lastClock)
             pushDeferred.await()
 

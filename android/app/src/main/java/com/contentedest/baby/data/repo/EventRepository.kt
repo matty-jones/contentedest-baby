@@ -219,6 +219,35 @@ class EventRepository(
         id
     }
 
+    suspend fun insertFeedSpan(
+        deviceId: String,
+        startUtc: Long,
+        endUtc: Long,
+        feedMode: FeedMode,
+        details: String? = null,
+        note: String? = null
+    ): String = withContext(Dispatchers.IO) {
+        val id = java.util.UUID.randomUUID().toString()
+        val now = kotlin.math.max(startUtc, endUtc)
+        val event = EventEntity(
+            event_id = id,
+            device_id = deviceId,
+            created_ts = now,
+            updated_ts = now,
+            version = 1,
+            deleted = false,
+            type = EventType.feed,
+            feed_mode = feedMode,
+            start_ts = startUtc,
+            end_ts = endUtc,
+            ts = startUtc, // Use start time as primary timestamp
+            details = details,
+            note = note
+        )
+        eventsDao.upsertEvent(event)
+        id
+    }
+
     // Sync functionality
     suspend fun getLastServerClock(): Long = withContext(Dispatchers.IO) {
         syncStateDao.get()?.last_server_clock ?: 0L
@@ -407,6 +436,14 @@ class EventRepository(
 
     suspend fun getLastNappyEvent(): EventEntity? = withContext(Dispatchers.IO) {
         eventsDao.lastNappyEvent()
+    }
+
+    suspend fun getAllEvents(): List<EventEntity> = withContext(Dispatchers.IO) {
+        eventsDao.getAllEvents()
+    }
+
+    suspend fun getAllEventsAsDtos(): List<EventDto> = withContext(Dispatchers.IO) {
+        eventsDao.getAllEvents().map { it.toDto() }
     }
 }
 
