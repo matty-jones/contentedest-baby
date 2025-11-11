@@ -15,8 +15,8 @@ android {
         applicationId = "com.contentedest.baby"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
         buildConfigField("String", "BASE_URL", "\"http://192.168.86.3:8005/\"")
