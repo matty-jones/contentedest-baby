@@ -5,6 +5,7 @@ android/.cxx/
 android/build/
 android/app/build/
 server/.venv/
+server/apks
 __pycache__/
 .pytest_cache/
 .DS_Store

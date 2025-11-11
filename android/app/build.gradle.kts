@@ -31,6 +31,9 @@ android {
 	    // shrinker/proguard rules are fine; BASE_URL is inlined
 	    isMinifyEnabled = false
 	    proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+	    // Sign with debug keystore for installable APKs (for internal/testing use)
+	    // For production, create a proper release keystore and configure it here
+	    signingConfig = signingConfigs.getByName("debug")
 	}
     }
     compileOptions {

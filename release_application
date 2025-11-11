@@ -19,7 +19,7 @@ cd "$SCRIPT_DIR"
 # File paths
 BUILD_GRADLE="android/app/build.gradle.kts"
 SERVER_MAIN="server/app/main.py"
-APK_OUTPUT="android/app/build/outputs/apk/release/app-release-unsigned.apk"
+APK_OUTPUT="android/app/build/outputs/apk/release/app-release.apk"
 APK_DEST="server/apks/latest.apk"
 
 # Function to print colored output
