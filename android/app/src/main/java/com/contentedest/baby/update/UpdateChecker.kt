@@ -2,6 +2,7 @@ package com.contentedest.baby.update
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.util.Log
@@ -89,6 +90,26 @@ class UpdateChecker @Inject constructor(
                     FileOutputStream(apkFile).use { outputStream ->
                         inputStream.copyTo(outputStream)
                     }
+                }
+
+                // Verify the downloaded APK version
+                try {
+                    val packageInfo = context.packageManager.getPackageArchiveInfo(
+                        apkFile.absolutePath,
+                        0
+                    )
+                    if (packageInfo != null) {
+                        Log.d(TAG, "Downloaded APK version: ${packageInfo.versionName} (${packageInfo.versionCode})")
+                        Log.d(TAG, "Current app version: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+                        
+                        if (packageInfo.versionCode <= BuildConfig.VERSION_CODE) {
+                            Log.w(TAG, "Downloaded APK version is not newer than current version!")
+                        }
+                    } else {
+                        Log.w(TAG, "Could not read package info from downloaded APK")
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to verify downloaded APK version", e)
                 }
 
                 Log.d(TAG, "APK downloaded successfully: ${apkFile.absolutePath}, size: ${apkFile.length()}")
