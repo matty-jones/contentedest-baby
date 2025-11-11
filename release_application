@@ -131,7 +131,15 @@ build_apk() {
         exit 1
     fi
     
-    print_success "APK built successfully: $APK_OUTPUT"
+    local apk_size=$(du -h "$APK_OUTPUT" | cut -f1)
+    local apk_absolute_path=$(cd "$(dirname "$APK_OUTPUT")" && pwd)/$(basename "$APK_OUTPUT")
+    print_success "APK built successfully!"
+    echo ""
+    echo "APK Location:"
+    echo "  Relative: $APK_OUTPUT"
+    echo "  Absolute: $apk_absolute_path"
+    echo "  Size: $apk_size"
+    echo ""
 }
 
 # Function to copy APK to server
@@ -214,7 +222,12 @@ main() {
     echo "Summary:"
     echo "  - Version Code: $current_version_code -> $new_version_code"
     echo "  - Version Name: $current_version_name -> $new_version_name"
-    echo "  - APK: $APK_DEST"
+    echo ""
+    echo "APK Files:"
+    local apk_output_absolute=$(cd "$(dirname "$APK_OUTPUT")" && pwd)/$(basename "$APK_OUTPUT")
+    local apk_dest_absolute=$(cd "$(dirname "$APK_DEST")" && pwd)/$(basename "$APK_DEST")
+    echo "  Build output: $apk_output_absolute"
+    echo "  Server copy:  $apk_dest_absolute"
     echo ""
     print_info "Next steps:"
     echo "  1. Review the changes in $BUILD_GRADLE and $SERVER_MAIN"
