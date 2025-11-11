@@ -104,7 +104,7 @@ fun SnakeTimeline(
             style = Stroke(width = geom.trackThickness, cap = StrokeCap.Round, join = StrokeJoin.Round)
         )
 
-        // Hour ticks
+        // Hour ticks (short lines on track)
         for (r in 0 until rows) {
             val rowY = geom.rowCenters[r]
             val hourWidth = geom.rowWidth / hoursPerRow
@@ -115,6 +115,23 @@ fun SnakeTimeline(
                     start = Offset(x, rowY - geom.trackThickness * 0.55f),
                     end = Offset(x, rowY + geom.trackThickness * 0.55f),
                     strokeWidth = 1f
+                )
+            }
+        }
+        
+        // Vertical hour lines (full height per row)
+        for (r in 0 until rows) {
+            val rowY = geom.rowCenters[r]
+            val hourWidth = geom.rowWidth / hoursPerRow
+            val rowTop = rowY - geom.trackThickness * 0.9f
+            val rowBottom = rowY + geom.trackThickness * 0.9f
+            for (h in 0..hoursPerRow) {
+                val x = geom.innerLeft + hourWidth * h
+                drawLine(
+                    color = gridColor.copy(alpha = 0.15f),
+                    start = Offset(x, rowTop),
+                    end = Offset(x, rowBottom),
+                    strokeWidth = 0.5f
                 )
             }
         }
