@@ -9,6 +9,7 @@ import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.Types
 import java.io.StringWriter
 import java.time.Instant
+import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.UUID
@@ -444,6 +445,61 @@ class EventRepository(
 
     suspend fun getAllEventsAsDtos(): List<EventDto> = withContext(Dispatchers.IO) {
         eventsDao.getAllEvents().map { it.toDto() }
+    }
+
+    suspend fun updateEvent(
+        eventId: String,
+        eventType: EventType,
+        details: String?,
+        startTime: LocalDateTime,
+        endTime: LocalDateTime,
+        deviceId: String
+    ) = withContext(Dispatchers.IO) {
+        val existingEvent = eventsDao.getEventById(eventId) ?: return@withContext
+        val now = java.time.Instant.now().epochSecond
+        val startTimestamp = startTime.atZone(ZoneId.systemDefault()).toEpochSecond()
+        val endTimestamp = endTime.atZone(ZoneId.systemDefault()).toEpochSecond()
+        
+        val updatedEvent = when (eventType) {
+            EventType.sleep -> {
+                existingEvent.copy(
+                    type = eventType,
+                    details = details,
+                    start_ts = startTimestamp,
+                    end_ts = endTimestamp,
+                    updated_ts = now,
+                    version = existingEvent.version + 1
+                )
+            }
+            EventType.feed -> {
+                val feedMode = when (details) {
+                    "Bottle" -> FeedMode.bottle
+                    "Solids" -> FeedMode.solids
+                    else -> FeedMode.breast
+                }
+                existingEvent.copy(
+                    type = eventType,
+                    feed_mode = feedMode,
+                    details = details,
+                    start_ts = startTimestamp,
+                    end_ts = endTimestamp,
+                    ts = startTimestamp,
+                    updated_ts = now,
+                    version = existingEvent.version + 1
+                )
+            }
+            EventType.nappy -> {
+                existingEvent.copy(
+                    type = eventType,
+                    nappy_type = details,
+                    details = details,
+                    ts = startTimestamp,
+                    updated_ts = now,
+                    version = existingEvent.version + 1
+                )
+            }
+        }
+        eventsDao.upsertEvent(updatedEvent)
     }
 }
 

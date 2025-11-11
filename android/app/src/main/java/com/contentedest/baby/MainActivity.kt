@@ -224,7 +224,7 @@ class MainActivity : ComponentActivity() {
                         Scaffold(
                             topBar = {
                                 TopAppBar(
-                                    title = { Text("The Contentedest Baby") },
+                                    title = { Text("Contentedest Baby") },
                                     actions = {
                                         IconButton(onClick = { showStatisticsScreen = true }) {
                                             Icon(

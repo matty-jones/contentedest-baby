@@ -38,6 +38,9 @@ interface EventsDao {
 
     @Query("SELECT * FROM events WHERE deleted = 0 ORDER BY created_ts ASC")
     suspend fun getAllEvents(): List<EventEntity>
+
+    @Query("SELECT * FROM events WHERE event_id = :eventId")
+    suspend fun getEventById(eventId: String): EventEntity?
 }
 
 @Dao
