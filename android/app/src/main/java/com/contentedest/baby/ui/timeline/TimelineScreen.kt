@@ -1414,7 +1414,8 @@ suspend fun createEvent(
                 eventRepository.insertBreastFeed(
                     deviceId,
                     listOf(Triple(side, startTimestamp, endTimestamp)),
-                    details
+                    details,
+                    null
                 )
             } else {
                 // For bottle and solids, create a feed event with start and end times
@@ -1422,7 +1423,7 @@ suspend fun createEvent(
             }
         }
         EventType.nappy -> {
-            eventRepository.createNappy(startTimestamp, deviceId, details ?: "Unknown", null)
+            eventRepository.createNappy(startTimestamp, deviceId, details ?: "Unknown", null, endTimestamp)
         }
     }
 }
