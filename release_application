@@ -120,11 +120,16 @@ update_server_main() {
     
     print_info "Updating $SERVER_MAIN..."
     
-    # Update version_code (Python format: version_code=1,  # comment)
-    sed -i "s/version_code=[0-9]*\(,\s*#.*\)\?/version_code=$new_version_code,/" "$SERVER_MAIN"
+    # Update version_code (Python format: version_code=1, or version_code=1,  # comment)
+    # Match version_code= followed by digits, then capture everything after (comma, comment, etc.)
+    sed -i "s/\(version_code=\)[0-9]*\(.*\)/\1$new_version_code\2/" "$SERVER_MAIN"
+    # If there's no comma after the number, add one (handles edge case where line has no comma)
+    sed -i "s/\(version_code=$new_version_code\)$/\1,/" "$SERVER_MAIN"
+    sed -i "s/\(version_code=$new_version_code\)\(\s\+#\)/\1, \2/" "$SERVER_MAIN"
     
-    # Update version_name (Python format: version_name="1.0",  # comment)
-    sed -i "s/version_name=\"[^\"]*\"\(,\s*#.*\)\?/version_name=\"$new_version_name\",/" "$SERVER_MAIN"
+    # Update version_name (Python format: version_name="1.0", or version_name="1.0",  # comment)
+    # Match version_name="..." and capture everything after the closing quote (comma, comment, etc.)
+    sed -i "s/\(version_name=\"\)[^\"]*\(\".*\)/\1$new_version_name\2/" "$SERVER_MAIN"
     
     print_success "Updated server version_code to $new_version_code and version_name to $new_version_name"
 }
