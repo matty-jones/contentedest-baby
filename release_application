@@ -47,18 +47,54 @@ extract_version() {
     echo "$version_code|$version_name"
 }
 
-# Function to increment minor version (e.g., 1.0 -> 1.1)
-increment_minor_version() {
+# Function to parse version into components (handles both 2 and 3 component versions)
+parse_version() {
     local version="$1"
     local major=$(echo "$version" | cut -d. -f1)
     local minor=$(echo "$version" | cut -d. -f2)
+    local patch=$(echo "$version" | cut -d. -f3)
     
     if [ -z "$minor" ]; then
         minor=0
     fi
+    if [ -z "$patch" ]; then
+        patch=0
+    fi
+    
+    echo "$major|$minor|$patch"
+}
+
+# Function to increment patch version (e.g., 1.4 -> 1.4.1)
+increment_patch_version() {
+    local version="$1"
+    local parsed=$(parse_version "$version")
+    local major=$(echo "$parsed" | cut -d'|' -f1)
+    local minor=$(echo "$parsed" | cut -d'|' -f2)
+    local patch=$(echo "$parsed" | cut -d'|' -f3)
+    
+    patch=$((patch + 1))
+    echo "$major.$minor.$patch"
+}
+
+# Function to increment minor version (e.g., 1.4 -> 1.5.0)
+increment_minor_version() {
+    local version="$1"
+    local parsed=$(parse_version "$version")
+    local major=$(echo "$parsed" | cut -d'|' -f1)
+    local minor=$(echo "$parsed" | cut -d'|' -f2)
     
     minor=$((minor + 1))
-    echo "$major.$minor"
+    echo "$major.$minor.0"
+}
+
+# Function to increment major version (e.g., 1.4 -> 2.0.0)
+increment_major_version() {
+    local version="$1"
+    local parsed=$(parse_version "$version")
+    local major=$(echo "$parsed" | cut -d'|' -f1)
+    
+    major=$((major + 1))
+    echo "$major.0.0"
 }
 
 # Function to update build.gradle.kts
@@ -160,8 +196,46 @@ copy_apk_to_server() {
     print_success "APK copied to $APK_DEST (size: $apk_size)"
 }
 
+# Function to show usage
+show_usage() {
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --minor    Increment patch version (e.g., 1.4 -> 1.4.1)"
+    echo "  --major    Increment major version (e.g., 1.4 -> 2.0.0)"
+    echo "  --help     Show this help message"
+    echo ""
+    echo "If no flags are provided, increments minor version (e.g., 1.4 -> 1.5.0)"
+    exit 0
+}
+
 # Main execution
 main() {
+    # Parse command-line arguments
+    local increment_type="minor"  # default: increment minor version
+    
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --minor)
+                increment_type="patch"
+                shift
+                ;;
+            --major)
+                increment_type="major"
+                shift
+                ;;
+            --help|-h)
+                show_usage
+                ;;
+            *)
+                print_error "Unknown option: $1"
+                echo ""
+                show_usage
+                exit 1
+                ;;
+        esac
+    done
+    
     print_info "Starting release process..."
     echo ""
     
@@ -184,9 +258,24 @@ main() {
     
     print_info "Current version: Code=$current_version_code, Name=$current_version_name"
     
-    # Increment versions
+    # Increment versions based on flag
     local new_version_code=$((current_version_code + 1))
-    local new_version_name=$(increment_minor_version "$current_version_name")
+    local new_version_name
+    
+    case "$increment_type" in
+        patch)
+            new_version_name=$(increment_patch_version "$current_version_name")
+            print_info "Increment type: Patch version"
+            ;;
+        major)
+            new_version_name=$(increment_major_version "$current_version_name")
+            print_info "Increment type: Major version"
+            ;;
+        minor)
+            new_version_name=$(increment_minor_version "$current_version_name")
+            print_info "Increment type: Minor version (default)"
+            ;;
+    esac
     
     print_info "New version: Code=$new_version_code, Name=$new_version_name"
     echo ""
@@ -236,6 +325,6 @@ main() {
     echo ""
 }
 
-# Run main function
-main
+# Run main function with command-line arguments
+main "$@"
 
