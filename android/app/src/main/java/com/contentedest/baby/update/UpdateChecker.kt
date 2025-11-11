@@ -106,13 +106,33 @@ class UpdateChecker @Inject constructor(
      */
     fun installApk(context: Context, apkFile: File): Boolean {
         return try {
+            // Verify file exists and is readable
+            if (!apkFile.exists()) {
+                Log.e(TAG, "APK file does not exist: ${apkFile.absolutePath}")
+                return false
+            }
+            
+            if (!apkFile.canRead()) {
+                Log.e(TAG, "APK file is not readable: ${apkFile.absolutePath}")
+                return false
+            }
+            
+            Log.d(TAG, "Preparing to install APK: ${apkFile.absolutePath}, size: ${apkFile.length()}")
+            
             val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 // Use FileProvider for Android 7.0+
-                FileProvider.getUriForFile(
-                    context,
-                    "${BuildConfig.APPLICATION_ID}.fileprovider",
-                    apkFile
-                )
+                try {
+                    val fileUri = FileProvider.getUriForFile(
+                        context,
+                        "${BuildConfig.APPLICATION_ID}.fileprovider",
+                        apkFile
+                    )
+                    Log.d(TAG, "FileProvider URI created: $fileUri")
+                    fileUri
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to create FileProvider URI", e)
+                    return false
+                }
             } else {
                 // Use file:// URI for older versions
                 Uri.fromFile(apkFile)
@@ -127,11 +147,21 @@ class UpdateChecker @Inject constructor(
                 }
             }
 
+            // Check if intent can be resolved
+            val packageManager = context.packageManager
+            if (intent.resolveActivity(packageManager) == null) {
+                Log.e(TAG, "No activity found to handle installation intent")
+                Log.e(TAG, "URI: $uri, MIME type: application/vnd.android.package-archive")
+                return false
+            }
+
+            Log.d(TAG, "Starting installation intent with URI: $uri")
             context.startActivity(intent)
-            Log.d(TAG, "Installation intent started")
+            Log.d(TAG, "Installation intent started successfully")
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to install APK", e)
+            Log.e(TAG, "Exception details: ${e.message}", e)
             false
         }
     }
