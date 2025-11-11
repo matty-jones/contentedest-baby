@@ -53,6 +53,7 @@ class EventRepository(
             type = EventType.nappy,
             ts = nowUtc,
             nappy_type = type,
+            details = type, // Set details field to match nappy_type for consistency
             note = note
         )
         eventsDao.upsertEvent(event)
@@ -97,7 +98,7 @@ class EventRepository(
         id
     }
 
-    suspend fun createNappy(nowUtc: Long, deviceId: String, type: String, note: String? = null): String = withContext(Dispatchers.IO) {
+    suspend fun createNappy(nowUtc: Long, deviceId: String, type: String, note: String? = null, endUtc: Long? = null): String = withContext(Dispatchers.IO) {
         val id = UUID.randomUUID().toString()
         val event = EventEntity(
             event_id = id,
@@ -108,7 +109,10 @@ class EventRepository(
             deleted = false,
             type = EventType.nappy,
             ts = nowUtc,
+            start_ts = nowUtc,
+            end_ts = endUtc,
             nappy_type = type,
+            details = type, // Set details field to match nappy_type for consistency
             note = note
         )
         eventsDao.upsertEvent(event)
@@ -192,11 +196,14 @@ class EventRepository(
     suspend fun insertBreastFeed(
         deviceId: String,
         segments: List<Triple<BreastSide, Long, Long>>, // side, start, end
+        details: String? = null,
         note: String? = null
     ): String = withContext(Dispatchers.IO) {
         val id = java.util.UUID.randomUUID().toString()
         val createdTs = segments.minOfOrNull { it.second } ?: java.time.Instant.now().epochSecond
         val updatedTs = segments.maxOfOrNull { it.third } ?: createdTs
+        val startTs = segments.minOfOrNull { it.second } ?: createdTs
+        val endTs = segments.maxOfOrNull { it.third } ?: createdTs
         val event = EventEntity(
             event_id = id,
             device_id = deviceId,
@@ -208,6 +215,9 @@ class EventRepository(
             feed_mode = FeedMode.breast,
             // Set primary timestamp to the first segment start so it appears on the timeline
             ts = createdTs,
+            start_ts = startTs,
+            end_ts = endTs,
+            details = details,
             note = note
         )
         eventsDao.upsertEvent(event)
