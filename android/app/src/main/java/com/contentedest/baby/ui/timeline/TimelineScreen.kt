@@ -49,14 +49,22 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-// Data class to preserve AddEventDialog state
-data class AddEventDialogState(
-    val selectedEventType: EventType? = null,
-    val selectedDetails: String? = null,
-    val startTime: LocalDateTime? = null,
-    val endTime: LocalDateTime? = null,
-    val durationHours: Int = 0,
-    val durationMinutes: Int = 30
+// Data classes to preserve live event dialog states
+data class LiveSleepDialogState(
+    val running: Boolean = false,
+    val startEpoch: Long? = null,
+    val endEpoch: Long? = null,
+    val details: String? = null
+)
+
+data class LiveFeedDialogState(
+    val activeSide: com.contentedest.baby.data.local.BreastSide? = null,
+    val segments: List<Triple<com.contentedest.baby.data.local.BreastSide, Long, Long>> = emptyList(),
+    val currentStart: Long? = null
+)
+
+data class LiveNappyDialogState(
+    val selected: String? = null
 )
 
 class TimelineViewModel(private val repo: EventRepository) {
@@ -96,9 +104,13 @@ fun TimelineScreen(
     // UI State for add event dialog
     var showAddEventDialog by remember { mutableStateOf(false) }
     var selectedTime by remember { mutableStateOf<LocalDateTime?>(null) }
-    var savedDialogState by remember { mutableStateOf<AddEventDialogState?>(null) }
-    var showCancelConfirmation by remember { mutableStateOf(false) }
-    var restoreSavedState by remember { mutableStateOf(false) } // Flag to indicate if we should restore saved state
+    
+    // UI State for live event dialogs with state preservation
+    var savedLiveSleepState by remember { mutableStateOf<LiveSleepDialogState?>(null) }
+    var savedLiveFeedState by remember { mutableStateOf<LiveFeedDialogState?>(null) }
+    var savedLiveNappyState by remember { mutableStateOf<LiveNappyDialogState?>(null) }
+    var showLiveCancelConfirmation by remember { mutableStateOf(false) }
+    var pendingLiveTypeForCancel by remember { mutableStateOf<EventType?>(null) }
 
     // Define event colors
     val eventColors = mapOf(
@@ -149,17 +161,21 @@ fun TimelineScreen(
                 onEventClick = { selectedEvent = it },
                 onTimeClick = { time ->
                     selectedTime = time
-                    restoreSavedState = false // Timeline click starts fresh
                     showAddEventDialog = true
                 },
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Floating "+" button for live add
+            // Floating "+" button for live add or restore saved dialog
             FloatingActionButton(
                 onClick = { 
-                    // Always show the live picker when plus button is clicked
-                    showLivePicker = true
+                    // If there's saved state, restore the appropriate dialog
+                    when {
+                        savedLiveSleepState != null -> activeLiveType = EventType.sleep
+                        savedLiveFeedState != null -> activeLiveType = EventType.feed
+                        savedLiveNappyState != null -> activeLiveType = EventType.nappy
+                        else -> showLivePicker = true
+                    }
                 },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
@@ -206,58 +222,18 @@ fun TimelineScreen(
                 currentDate = currentDate,
                 eventRepository = eventRepository,
                 deviceId = deviceId,
-                savedState = if (restoreSavedState) savedDialogState else null, // Only restore if opened via '+' button
-                onStateChanged = { state ->
-                    // Save state whenever it changes
-                    savedDialogState = state
-                },
                 onDismiss = { 
                     showAddEventDialog = false
-                    restoreSavedState = false // Reset flag
-                    // Don't clear selectedTime or savedDialogState - preserve them
-                },
-                onCancel = {
-                    // Show confirmation dialog
-                    showCancelConfirmation = true
+                    selectedTime = null
                 },
                 onEventCreated = {
                     showAddEventDialog = false
                     selectedTime = null
-                    savedDialogState = null // Clear saved state after successful creation
-                    restoreSavedState = false // Reset flag
                     // Reload events and trigger sync
                     scope.launch {
                         vm.load(currentDate)
                         // Trigger immediate sync to push the new event to server
                         SyncWorker.triggerImmediateSync(context, deviceId)
-                    }
-                }
-            )
-        }
-        
-        // Cancel confirmation dialog
-        if (showCancelConfirmation) {
-            AlertDialog(
-                onDismissRequest = { showCancelConfirmation = false },
-                title = { Text("Discard changes?") },
-                text = { Text("Your event information will be saved so you can continue later by pressing the '+' button.") },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            showCancelConfirmation = false
-                            showAddEventDialog = false
-                            restoreSavedState = false // Reset flag
-                            // State is already saved, so just close the dialog
-                        }
-                    ) {
-                        Text("Discard")
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = { showCancelConfirmation = false }
-                    ) {
-                        Text("Continue Editing")
                     }
                 }
             )
@@ -278,22 +254,79 @@ fun TimelineScreen(
             EventType.sleep -> LiveSleepDialog(
                 eventRepository = eventRepository,
                 deviceId = deviceId,
+                savedState = savedLiveSleepState,
+                onStateChanged = { state -> savedLiveSleepState = state },
                 onDismiss = { activeLiveType = null },
-                onSaved = { scope.launch { vm.load(currentDate) }; activeLiveType = null }
+                onCancel = {
+                    pendingLiveTypeForCancel = EventType.sleep
+                    showLiveCancelConfirmation = true
+                },
+                onSaved = { 
+                    scope.launch { vm.load(currentDate) }
+                    activeLiveType = null
+                    savedLiveSleepState = null // Clear saved state after successful save
+                }
             )
             EventType.feed -> LiveFeedDialog(
                 eventRepository = eventRepository,
                 deviceId = deviceId,
+                savedState = savedLiveFeedState,
+                onStateChanged = { state -> savedLiveFeedState = state },
                 onDismiss = { activeLiveType = null },
-                onSaved = { scope.launch { vm.load(currentDate) }; activeLiveType = null }
+                onCancel = {
+                    pendingLiveTypeForCancel = EventType.feed
+                    showLiveCancelConfirmation = true
+                },
+                onSaved = { 
+                    scope.launch { vm.load(currentDate) }
+                    activeLiveType = null
+                    savedLiveFeedState = null // Clear saved state after successful save
+                }
             )
             EventType.nappy -> LiveNappyDialog(
                 eventRepository = eventRepository,
                 deviceId = deviceId,
+                savedState = savedLiveNappyState,
+                onStateChanged = { state -> savedLiveNappyState = state },
                 onDismiss = { activeLiveType = null },
-                onSaved = { scope.launch { vm.load(currentDate) }; activeLiveType = null }
+                onCancel = {
+                    pendingLiveTypeForCancel = EventType.nappy
+                    showLiveCancelConfirmation = true
+                },
+                onSaved = { 
+                    scope.launch { vm.load(currentDate) }
+                    activeLiveType = null
+                    savedLiveNappyState = null // Clear saved state after successful save
+                }
             )
             null -> {}
+        }
+        
+        // Cancel confirmation dialog for live events
+        if (showLiveCancelConfirmation) {
+            AlertDialog(
+                onDismissRequest = { showLiveCancelConfirmation = false },
+                title = { Text("Discard changes?") },
+                text = { Text("Your event information will be saved so you can continue later by pressing the '+' button.") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showLiveCancelConfirmation = false
+                            activeLiveType = null
+                            // Keep saved state so user can restore it later with '+' button
+                        }
+                    ) {
+                        Text("Discard")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { showLiveCancelConfirmation = false }
+                    ) {
+                        Text("Continue Editing")
+                    }
+                }
+            )
         }
     }
 }
@@ -303,7 +336,8 @@ fun LiveEventPickerSheet(
     onDismiss: () -> Unit,
     onPick: (EventType) -> Unit
 ) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    // Disable outside taps - dialog can only be closed via Cancel button
+    androidx.compose.ui.window.Dialog(onDismissRequest = { /* Do nothing - prevent accidental dismissal */ }) {
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -333,14 +367,30 @@ fun LiveEventPickerSheet(
 fun LiveSleepDialog(
     eventRepository: EventRepository,
     deviceId: String,
+    savedState: LiveSleepDialogState? = null,
+    onStateChanged: (LiveSleepDialogState) -> Unit = {},
     onDismiss: () -> Unit,
+    onCancel: () -> Unit,
     onSaved: () -> Unit
 ) {
-    var running by remember { mutableStateOf(false) }
-    var startEpoch by remember { mutableStateOf<Long?>(null) }
-    var endEpoch by remember { mutableStateOf<Long?>(null) }
-    var details by remember { mutableStateOf<String?>(null) }
+    // Initialize state from saved state or defaults
+    var running by remember { mutableStateOf(savedState?.running ?: false) }
+    var startEpoch by remember { mutableStateOf<Long?>(savedState?.startEpoch) }
+    var endEpoch by remember { mutableStateOf<Long?>(savedState?.endEpoch) }
+    var details by remember { mutableStateOf<String?>(savedState?.details) }
     val scope = rememberCoroutineScope()
+
+    // Save state whenever it changes
+    LaunchedEffect(running, startEpoch, endEpoch, details) {
+        onStateChanged(
+            LiveSleepDialogState(
+                running = running,
+                startEpoch = startEpoch,
+                endEpoch = endEpoch,
+                details = details
+            )
+        )
+    }
 
     LaunchedEffect(running) {
         while (running) {
@@ -349,7 +399,8 @@ fun LiveSleepDialog(
         }
     }
 
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    // Disable outside taps - dialog can only be closed via Cancel or Save buttons
+    androidx.compose.ui.window.Dialog(onDismissRequest = { /* Do nothing - prevent accidental dismissal */ }) {
         Card(modifier = Modifier.padding(16.dp), elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)) {
             Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text("Live Sleep", style = MaterialTheme.typography.headlineSmall)
@@ -374,7 +425,7 @@ fun LiveSleepDialog(
                             running = false
                         }
                     }, modifier = Modifier.weight(1f)) { Text(if (running) "Pause" else "Play") }
-                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                    OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Cancel") }
                 }
                 Button(
                     onClick = {
@@ -400,14 +451,28 @@ fun LiveSleepDialog(
 fun LiveFeedDialog(
     eventRepository: EventRepository,
     deviceId: String,
+    savedState: LiveFeedDialogState? = null,
+    onStateChanged: (LiveFeedDialogState) -> Unit = {},
     onDismiss: () -> Unit,
+    onCancel: () -> Unit,
     onSaved: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    // Left/Right independent timers, only one active at a time
-    var activeSide by remember { mutableStateOf<com.contentedest.baby.data.local.BreastSide?>(null) }
-    var segments by remember { mutableStateOf(listOf<Triple<com.contentedest.baby.data.local.BreastSide, Long, Long>>()) }
-    var currentStart by remember { mutableStateOf<Long?>(null) }
+    // Initialize state from saved state or defaults
+    var activeSide by remember { mutableStateOf<com.contentedest.baby.data.local.BreastSide?>(savedState?.activeSide) }
+    var segments by remember { mutableStateOf(savedState?.segments ?: emptyList()) }
+    var currentStart by remember { mutableStateOf<Long?>(savedState?.currentStart) }
+    
+    // Save state whenever it changes
+    LaunchedEffect(activeSide, segments, currentStart) {
+        onStateChanged(
+            LiveFeedDialogState(
+                activeSide = activeSide,
+                segments = segments,
+                currentStart = currentStart
+            )
+        )
+    }
 
     var totalSeconds by remember { mutableStateOf(0L) }
     LaunchedEffect(activeSide, currentStart, segments) {
@@ -441,7 +506,8 @@ fun LiveFeedDialog(
 
     // totalSeconds is kept live by LaunchedEffect above
 
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    // Disable outside taps - dialog can only be closed via Cancel or Save buttons
+    androidx.compose.ui.window.Dialog(onDismissRequest = { /* Do nothing - prevent accidental dismissal */ }) {
         Card(modifier = Modifier.padding(16.dp), elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)) {
             Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text("Live Feeding (Breast)", style = MaterialTheme.typography.headlineSmall)
@@ -477,7 +543,7 @@ fun LiveFeedDialog(
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                    OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Cancel") }
                     Button(
                         onClick = {
                             if (activeSide != null && currentStart != null) {
@@ -504,13 +570,25 @@ fun LiveFeedDialog(
 fun LiveNappyDialog(
     eventRepository: EventRepository,
     deviceId: String,
+    savedState: LiveNappyDialogState? = null,
+    onStateChanged: (LiveNappyDialogState) -> Unit = {},
     onDismiss: () -> Unit,
+    onCancel: () -> Unit,
     onSaved: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    var selected by remember { mutableStateOf<String?>(null) }
+    // Initialize state from saved state or defaults
+    var selected by remember { mutableStateOf<String?>(savedState?.selected) }
+    
+    // Save state whenever it changes
+    LaunchedEffect(selected) {
+        onStateChanged(
+            LiveNappyDialogState(selected = selected)
+        )
+    }
 
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    // Disable outside taps - dialog can only be closed via Cancel or Save buttons
+    androidx.compose.ui.window.Dialog(onDismissRequest = { /* Do nothing - prevent accidental dismissal */ }) {
         Card(modifier = Modifier.padding(16.dp), elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)) {
             Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text("Quick Diaper", style = MaterialTheme.typography.headlineSmall)
@@ -520,7 +598,7 @@ fun LiveNappyDialog(
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                    OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Cancel") }
                     Button(
                         onClick = {
                             val now = java.time.Instant.now().epochSecond
@@ -745,54 +823,19 @@ fun AddEventDialog(
     currentDate: LocalDate,
     eventRepository: EventRepository,
     deviceId: String,
-    savedState: AddEventDialogState? = null,
-    onStateChanged: (AddEventDialogState) -> Unit = {},
     onDismiss: () -> Unit,
-    onCancel: () -> Unit,
     onEventCreated: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    
-    // Initialize state from saved state or defaults
-    var selectedEventType by remember { 
-        mutableStateOf(savedState?.selectedEventType ?: null) 
-    }
-    var selectedDetails by remember { 
-        mutableStateOf(savedState?.selectedDetails ?: null) 
-    }
-    var startTime by remember { 
-        mutableStateOf(savedState?.startTime ?: initialTime) 
-    }
-    var endTime by remember { 
-        mutableStateOf(
-            savedState?.endTime 
-                ?: (savedState?.startTime?.plusHours(savedState.durationHours.toLong())?.plusMinutes(savedState.durationMinutes.toLong())
-                    ?: initialTime.plusMinutes(30))
-        ) 
-    }
-    var durationHours by remember { 
-        mutableStateOf(savedState?.durationHours ?: 0) 
-    }
-    var durationMinutes by remember { 
-        mutableStateOf(savedState?.durationMinutes ?: 30) 
-    }
+    var selectedEventType by remember { mutableStateOf<EventType?>(null) }
+    var selectedDetails by remember { mutableStateOf<String?>(null) }
+    var startTime by remember { mutableStateOf(initialTime) }
+    var endTime by remember { mutableStateOf(initialTime.plusMinutes(30)) }
+    var durationHours by remember { mutableStateOf(0) }
+    var durationMinutes by remember { mutableStateOf(30) }
     var showStartTimePicker by remember { mutableStateOf(false) }
     var showEndTimePicker by remember { mutableStateOf(false) }
     var showDurationPicker by remember { mutableStateOf(false) }
-    
-    // Save state whenever it changes
-    LaunchedEffect(selectedEventType, selectedDetails, startTime, endTime, durationHours, durationMinutes) {
-        onStateChanged(
-            AddEventDialogState(
-                selectedEventType = selectedEventType,
-                selectedDetails = selectedDetails,
-                startTime = startTime,
-                endTime = endTime,
-                durationHours = durationHours,
-                durationMinutes = durationMinutes
-            )
-        )
-    }
     
     // Update duration when end time changes
     LaunchedEffect(endTime) {
@@ -811,8 +854,7 @@ fun AddEventDialog(
         endTime = startTime.plusHours(durationHours.toLong()).plusMinutes(durationMinutes.toLong())
     }
     
-    // Disable outside taps - dialog can only be closed via Cancel or Save buttons
-    Dialog(onDismissRequest = { /* Do nothing - prevent accidental dismissal */ }) {
+    Dialog(onDismissRequest = onDismiss) {
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -933,7 +975,7 @@ fun AddEventDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedButton(
-                        onClick = onCancel,
+                        onClick = onDismiss,
                         modifier = Modifier.weight(1f)
                     ) {
                         Text("Cancel")
