@@ -16,6 +16,8 @@ import com.contentedest.baby.data.local.EventType
 import com.contentedest.baby.data.repo.EventRepository
 import kotlinx.coroutines.launch
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 
 @Composable
 fun QuickStatsBar(
@@ -26,6 +28,7 @@ fun QuickStatsBar(
     var lastSleep by remember { mutableStateOf<EventEntity?>(null) }
     var lastFeed by remember { mutableStateOf<EventEntity?>(null) }
     var lastNappy by remember { mutableStateOf<EventEntity?>(null) }
+    var todayEvents by remember { mutableStateOf<List<EventEntity>>(emptyList()) }
     var refreshTrigger by remember { mutableStateOf(0) }
 
     // Event colors matching timeline
@@ -35,12 +38,18 @@ fun QuickStatsBar(
         EventType.nappy to Color(0xFF98FB98) // Pale green
     )
 
-    // Load last events
+    // Calculate today's start and end timestamps
+    val today = LocalDate.now()
+    val dayStart = today.atStartOfDay(ZoneId.systemDefault()).toEpochSecond()
+    val dayEnd = today.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toEpochSecond()
+
+    // Load last events and today's events
     LaunchedEffect(Unit) {
         scope.launch {
             lastSleep = eventRepository.getLastSleepEvent()
             lastFeed = eventRepository.getLastFeedEvent()
             lastNappy = eventRepository.getLastNappyEvent()
+            todayEvents = eventRepository.eventsForDay(dayStart, dayEnd)
         }
     }
 
@@ -52,6 +61,7 @@ fun QuickStatsBar(
                 lastSleep = eventRepository.getLastSleepEvent()
                 lastFeed = eventRepository.getLastFeedEvent()
                 lastNappy = eventRepository.getLastNappyEvent()
+                todayEvents = eventRepository.eventsForDay(dayStart, dayEnd)
             }
         }
     }
@@ -64,84 +74,172 @@ fun QuickStatsBar(
         }
     }
 
-    Row(
+    // Calculate today's totals
+    val todaySleepTotal = remember(todayEvents, refreshTrigger) {
+        todayEvents
+            .filter { it.type == EventType.sleep && it.start_ts != null && it.end_ts != null }
+            .sumOf { (it.end_ts ?: 0) - (it.start_ts ?: 0) }
+    }
+    
+    val todayFeedTotal = remember(todayEvents, refreshTrigger) {
+        todayEvents
+            .filter { it.type == EventType.feed && it.start_ts != null && it.end_ts != null }
+            .sumOf { (it.end_ts ?: 0) - (it.start_ts ?: 0) }
+    }
+    
+    val todayNappyCount = remember(todayEvents) {
+        todayEvents.count { it.type == EventType.nappy }
+    }
+
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
-        // Sleep column
-        StatColumn(
-            label = "Sleep",
-            event = lastSleep,
-            color = eventColors[EventType.sleep] ?: Color.Gray,
-            modifier = Modifier.weight(1f),
-            refreshTrigger = refreshTrigger
-        )
+        // Header row: | Sleep | Feed | Diaper
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            // Empty label column
+            Box(modifier = Modifier.weight(0.8f))
+            
+            // Sleep header
+            Text(
+                text = "Sleep",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = eventColors[EventType.sleep] ?: Color.Gray,
+                modifier = Modifier.weight(1f)
+            )
+            
+            // Feed header
+            Text(
+                text = "Feed",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = eventColors[EventType.feed] ?: Color.Gray,
+                modifier = Modifier.weight(1f)
+            )
+            
+            // Diaper header
+            Text(
+                text = "Diaper",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = eventColors[EventType.nappy] ?: Color.Gray,
+                modifier = Modifier.weight(1f)
+            )
+        }
         
-        // Feed column
-        StatColumn(
-            label = "Feed",
-            event = lastFeed,
-            color = eventColors[EventType.feed] ?: Color.Gray,
-            modifier = Modifier.weight(1f),
-            refreshTrigger = refreshTrigger
-        )
+        Spacer(modifier = Modifier.height(2.dp))
         
-        // Diaper column
-        StatColumn(
-            label = "Diaper",
-            event = lastNappy,
-            color = eventColors[EventType.nappy] ?: Color.Gray,
-            modifier = Modifier.weight(1f),
-            refreshTrigger = refreshTrigger
-        )
+        // Last row: Last | time ago (details) | time ago (details) | time ago (details)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // "Last" label
+            Text(
+                text = "Last",
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(0.8f)
+            )
+            
+            // Sleep last
+            StatCell(
+                event = lastSleep,
+                modifier = Modifier.weight(1f),
+                refreshTrigger = refreshTrigger
+            )
+            
+            // Feed last
+            StatCell(
+                event = lastFeed,
+                modifier = Modifier.weight(1f),
+                refreshTrigger = refreshTrigger
+            )
+            
+            // Diaper last
+            StatCell(
+                event = lastNappy,
+                modifier = Modifier.weight(1f),
+                refreshTrigger = refreshTrigger
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(2.dp))
+        
+        // Today row: Today | total | total | count
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // "Today" label
+            Text(
+                text = "Today",
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(0.8f)
+            )
+            
+            // Sleep total
+            Text(
+                text = formatDurationShort(todaySleepTotal),
+                fontSize = 9.sp,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+            
+            // Feed total
+            Text(
+                text = formatDurationShort(todayFeedTotal),
+                fontSize = 9.sp,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+            
+            // Diaper count
+            Text(
+                text = if (todayNappyCount > 0) "$todayNappyCount" else "0",
+                fontSize = 9.sp,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }
 
 @Composable
-private fun StatColumn(
-    label: String,
+private fun StatCell(
     event: EventEntity?,
-    color: Color,
     modifier: Modifier = Modifier,
     refreshTrigger: Int = 0
 ) {
-    Column(
-        modifier = modifier.padding(horizontal = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = label,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            color = color
-        )
+    if (event != null) {
+        // refreshTrigger causes recomposition, which recalculates these values
+        val timeAgo = formatTimeAgo(event)
+        val detail = formatEventDetail(event)
         
-        if (event != null) {
-            // refreshTrigger causes recomposition, which recalculates these values
-            val timeAgo = formatTimeAgo(event)
-            val detail = formatEventDetail(event)
-            
-            Text(
-                text = timeAgo,
-                fontSize = 9.sp,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = detail,
-                fontSize = 9.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-            )
-        } else {
-            Text(
-                text = "—",
-                fontSize = 9.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-            )
-        }
+        Text(
+            text = "$timeAgo ($detail)",
+            fontSize = 9.sp,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = modifier
+        )
+    } else {
+        Text(
+            text = "—",
+            fontSize = 9.sp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+            modifier = modifier
+        )
     }
 }
 
@@ -183,27 +281,17 @@ private fun formatEventDetail(event: EventEntity): String {
             }
         }
         EventType.feed -> {
-            val mode = event.feed_mode?.name?.replaceFirstChar { it.uppercase() }
-                ?: event.details?.let { details ->
-                    when {
-                        details.contains("L&R", ignoreCase = true) -> "Breast"
-                        details.contains("Bottle", ignoreCase = true) -> "Bottle"
-                        details.contains("Solids", ignoreCase = true) -> "Solids"
-                        else -> "Feed"
-                    }
-                } ?: "Feed"
-            
-            val duration = if (event.end_ts != null && event.start_ts != null) {
+            // For feed, show just the duration (not the mode) in the Last row
+            if (event.end_ts != null && event.start_ts != null) {
                 val durationSeconds = event.end_ts - event.start_ts
                 if (durationSeconds > 0) {
-                    " (${formatDurationShort(durationSeconds)})"
+                    formatDurationShort(durationSeconds)
                 } else {
-                    ""
+                    "—"
                 }
             } else {
-                ""
+                "—"
             }
-            "$mode$duration"
         }
         EventType.nappy -> {
             event.nappy_type?.replaceFirstChar { it.uppercase() } ?: "—"
