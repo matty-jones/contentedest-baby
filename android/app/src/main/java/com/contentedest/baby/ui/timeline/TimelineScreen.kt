@@ -155,19 +155,11 @@ fun TimelineScreen(
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Floating "+" button for live add or restore saved dialog
+            // Floating "+" button for live add
             FloatingActionButton(
                 onClick = { 
-                    // If there's saved state, restore the dialog with that state
-                    // Otherwise, show the live picker
-                    if (savedDialogState != null) {
-                        // Restore saved state - use saved startTime or current time
-                        selectedTime = savedDialogState?.startTime ?: LocalDateTime.now()
-                        restoreSavedState = true // Flag to restore saved state
-                        showAddEventDialog = true
-                    } else {
-                        showLivePicker = true
-                    }
+                    // Always show the live picker when plus button is clicked
+                    showLivePicker = true
                 },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
