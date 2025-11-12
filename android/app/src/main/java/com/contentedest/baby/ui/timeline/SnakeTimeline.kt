@@ -125,7 +125,7 @@ fun SnakeTimeline(
             val hourWidth = geom.rowWidth / hoursPerRow
             // Extend lines well above the track to be clearly visible
             val lineTop = rowY - geom.trackThickness * 2.5f
-            val lineBottom = rowY - geom.trackThickness * 0.3f // Just above the track center
+            val lineBottom = rowY + geom.trackThickness * 0.5f // Extend to bottom of track
             for (h in 0..hoursPerRow) {
                 val x = geom.innerLeft + hourWidth * h
                 drawLine(
