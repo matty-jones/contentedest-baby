@@ -49,6 +49,16 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+// Data class to preserve AddEventDialog state
+data class AddEventDialogState(
+    val selectedEventType: EventType? = null,
+    val selectedDetails: String? = null,
+    val startTime: LocalDateTime? = null,
+    val endTime: LocalDateTime? = null,
+    val durationHours: Int = 0,
+    val durationMinutes: Int = 30
+)
+
 class TimelineViewModel(private val repo: EventRepository) {
     private val _events = MutableStateFlow<List<EventEntity>>(emptyList())
     val events: StateFlow<List<EventEntity>> = _events
@@ -86,6 +96,9 @@ fun TimelineScreen(
     // UI State for add event dialog
     var showAddEventDialog by remember { mutableStateOf(false) }
     var selectedTime by remember { mutableStateOf<LocalDateTime?>(null) }
+    var savedDialogState by remember { mutableStateOf<AddEventDialogState?>(null) }
+    var showCancelConfirmation by remember { mutableStateOf(false) }
+    var restoreSavedState by remember { mutableStateOf(false) } // Flag to indicate if we should restore saved state
 
     // Define event colors
     val eventColors = mapOf(
@@ -136,14 +149,26 @@ fun TimelineScreen(
                 onEventClick = { selectedEvent = it },
                 onTimeClick = { time ->
                     selectedTime = time
+                    restoreSavedState = false // Timeline click starts fresh
                     showAddEventDialog = true
                 },
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Floating "+" button for live add
+            // Floating "+" button for live add or restore saved dialog
             FloatingActionButton(
-                onClick = { showLivePicker = true },
+                onClick = { 
+                    // If there's saved state, restore the dialog with that state
+                    // Otherwise, show the live picker
+                    if (savedDialogState != null) {
+                        // Restore saved state - use saved startTime or current time
+                        selectedTime = savedDialogState?.startTime ?: LocalDateTime.now()
+                        restoreSavedState = true // Flag to restore saved state
+                        showAddEventDialog = true
+                    } else {
+                        showLivePicker = true
+                    }
+                },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp)
@@ -189,18 +214,58 @@ fun TimelineScreen(
                 currentDate = currentDate,
                 eventRepository = eventRepository,
                 deviceId = deviceId,
+                savedState = if (restoreSavedState) savedDialogState else null, // Only restore if opened via '+' button
+                onStateChanged = { state ->
+                    // Save state whenever it changes
+                    savedDialogState = state
+                },
                 onDismiss = { 
                     showAddEventDialog = false
-                    selectedTime = null
+                    restoreSavedState = false // Reset flag
+                    // Don't clear selectedTime or savedDialogState - preserve them
+                },
+                onCancel = {
+                    // Show confirmation dialog
+                    showCancelConfirmation = true
                 },
                 onEventCreated = {
                     showAddEventDialog = false
                     selectedTime = null
+                    savedDialogState = null // Clear saved state after successful creation
+                    restoreSavedState = false // Reset flag
                     // Reload events and trigger sync
                     scope.launch {
                         vm.load(currentDate)
                         // Trigger immediate sync to push the new event to server
                         SyncWorker.triggerImmediateSync(context, deviceId)
+                    }
+                }
+            )
+        }
+        
+        // Cancel confirmation dialog
+        if (showCancelConfirmation) {
+            AlertDialog(
+                onDismissRequest = { showCancelConfirmation = false },
+                title = { Text("Discard changes?") },
+                text = { Text("Your event information will be saved so you can continue later by pressing the '+' button.") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showCancelConfirmation = false
+                            showAddEventDialog = false
+                            restoreSavedState = false // Reset flag
+                            // State is already saved, so just close the dialog
+                        }
+                    ) {
+                        Text("Discard")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { showCancelConfirmation = false }
+                    ) {
+                        Text("Continue Editing")
                     }
                 }
             )
@@ -688,19 +753,54 @@ fun AddEventDialog(
     currentDate: LocalDate,
     eventRepository: EventRepository,
     deviceId: String,
+    savedState: AddEventDialogState? = null,
+    onStateChanged: (AddEventDialogState) -> Unit = {},
     onDismiss: () -> Unit,
+    onCancel: () -> Unit,
     onEventCreated: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    var selectedEventType by remember { mutableStateOf<EventType?>(null) }
-    var selectedDetails by remember { mutableStateOf<String?>(null) }
-    var startTime by remember { mutableStateOf(initialTime) }
-    var endTime by remember { mutableStateOf(initialTime.plusMinutes(30)) }
-    var durationHours by remember { mutableStateOf(0) }
-    var durationMinutes by remember { mutableStateOf(30) }
+    
+    // Initialize state from saved state or defaults
+    var selectedEventType by remember { 
+        mutableStateOf(savedState?.selectedEventType ?: null) 
+    }
+    var selectedDetails by remember { 
+        mutableStateOf(savedState?.selectedDetails ?: null) 
+    }
+    var startTime by remember { 
+        mutableStateOf(savedState?.startTime ?: initialTime) 
+    }
+    var endTime by remember { 
+        mutableStateOf(
+            savedState?.endTime 
+                ?: (savedState?.startTime?.plusHours(savedState.durationHours.toLong())?.plusMinutes(savedState.durationMinutes.toLong())
+                    ?: initialTime.plusMinutes(30))
+        ) 
+    }
+    var durationHours by remember { 
+        mutableStateOf(savedState?.durationHours ?: 0) 
+    }
+    var durationMinutes by remember { 
+        mutableStateOf(savedState?.durationMinutes ?: 30) 
+    }
     var showStartTimePicker by remember { mutableStateOf(false) }
     var showEndTimePicker by remember { mutableStateOf(false) }
     var showDurationPicker by remember { mutableStateOf(false) }
+    
+    // Save state whenever it changes
+    LaunchedEffect(selectedEventType, selectedDetails, startTime, endTime, durationHours, durationMinutes) {
+        onStateChanged(
+            AddEventDialogState(
+                selectedEventType = selectedEventType,
+                selectedDetails = selectedDetails,
+                startTime = startTime,
+                endTime = endTime,
+                durationHours = durationHours,
+                durationMinutes = durationMinutes
+            )
+        )
+    }
     
     // Update duration when end time changes
     LaunchedEffect(endTime) {
@@ -719,7 +819,8 @@ fun AddEventDialog(
         endTime = startTime.plusHours(durationHours.toLong()).plusMinutes(durationMinutes.toLong())
     }
     
-    Dialog(onDismissRequest = onDismiss) {
+    // Disable outside taps - dialog can only be closed via Cancel or Save buttons
+    Dialog(onDismissRequest = { /* Do nothing - prevent accidental dismissal */ }) {
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -840,7 +941,7 @@ fun AddEventDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedButton(
-                        onClick = onDismiss,
+                        onClick = onCancel,
                         modifier = Modifier.weight(1f)
                     ) {
                         Text("Cancel")
