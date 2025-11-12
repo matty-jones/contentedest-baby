@@ -119,19 +119,20 @@ fun SnakeTimeline(
             }
         }
         
-        // Vertical hour lines (full height per row)
+        // Vertical hour lines (dark, narrow lines above the snake, behind events)
         for (r in 0 until rows) {
             val rowY = geom.rowCenters[r]
             val hourWidth = geom.rowWidth / hoursPerRow
-            val rowTop = rowY - geom.trackThickness * 0.9f
-            val rowBottom = rowY + geom.trackThickness * 0.9f
+            // Extend lines well above the track to be clearly visible
+            val lineTop = rowY - geom.trackThickness * 2.5f
+            val lineBottom = rowY - geom.trackThickness * 0.3f // Just above the track center
             for (h in 0..hoursPerRow) {
                 val x = geom.innerLeft + hourWidth * h
                 drawLine(
-                    color = gridColor.copy(alpha = 0.15f),
-                    start = Offset(x, rowTop),
-                    end = Offset(x, rowBottom),
-                    strokeWidth = 0.5f
+                    color = Color.Black.copy(alpha = 0.4f), // Dark color for visibility
+                    start = Offset(x, lineTop),
+                    end = Offset(x, lineBottom),
+                    strokeWidth = 1f // Narrow line
                 )
             }
         }
