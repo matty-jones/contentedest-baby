@@ -824,7 +824,7 @@ fun AddEventDialog(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(8.dp),
+                .padding(7.dp),
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
             Column(
@@ -1080,7 +1080,7 @@ fun EditEventDialog(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(8.dp),
+                .padding(7.dp),
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
             Column(
@@ -1284,7 +1284,7 @@ fun TimePickerDialog(
     
     Dialog(onDismissRequest = onDismiss) {
         Card(
-            modifier = Modifier.padding(8.dp),
+            modifier = Modifier.padding(7.dp),
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
             Column(
