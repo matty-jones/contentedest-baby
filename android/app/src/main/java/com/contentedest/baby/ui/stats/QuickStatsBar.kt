@@ -1,6 +1,7 @@
 package com.contentedest.baby.ui.stats
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -22,6 +23,7 @@ import java.time.ZoneId
 @Composable
 fun QuickStatsBar(
     eventRepository: EventRepository,
+    onEventTypeClick: ((EventType) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
@@ -111,7 +113,11 @@ fun QuickStatsBar(
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
                 color = eventColors[EventType.sleep] ?: Color.Gray,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(enabled = onEventTypeClick != null) {
+                        onEventTypeClick?.invoke(EventType.sleep)
+                    }
             )
             
             // Feed header
@@ -120,7 +126,11 @@ fun QuickStatsBar(
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
                 color = eventColors[EventType.feed] ?: Color.Gray,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(enabled = onEventTypeClick != null) {
+                        onEventTypeClick?.invoke(EventType.feed)
+                    }
             )
             
             // Diaper header
@@ -129,7 +139,11 @@ fun QuickStatsBar(
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
                 color = eventColors[EventType.nappy] ?: Color.Gray,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(enabled = onEventTypeClick != null) {
+                        onEventTypeClick?.invoke(EventType.nappy)
+                    }
             )
         }
         
