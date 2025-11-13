@@ -25,15 +25,19 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.contentedest.baby.data.local.EventType
+import com.contentedest.baby.data.local.EventEntity
 import com.contentedest.baby.data.repo.EventRepository
 import com.contentedest.baby.data.repo.GrowthRepository
 import com.contentedest.baby.sync.SyncWorker
 import com.contentedest.baby.ui.timeline.TimelineScreen
 import com.contentedest.baby.ui.timeline.TimelineViewModel
+import com.contentedest.baby.ui.timeline.EventListScreen
 import com.contentedest.baby.ui.export.ExportScreen
 import com.contentedest.baby.ui.export.ExportViewModel
 import com.contentedest.baby.ui.stats.StatisticsScreen
 import com.contentedest.baby.ui.stats.StatisticsViewModel
+import com.contentedest.baby.ui.stats.SettingsScreen
 import com.contentedest.baby.ui.stats.QuickStatsBar
 import com.contentedest.baby.ui.growth.GrowthScreen
 import com.contentedest.baby.ui.growth.GrowthStatsBar
@@ -89,6 +93,10 @@ class MainActivity : ComponentActivity() {
                     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     var showExportScreen by remember { mutableStateOf(false) }
                     var showStatisticsScreen by remember { mutableStateOf(false) }
+                    var showEventListScreen by remember { mutableStateOf<EventType?>(null) }
+                    var showSettingsScreen by remember { mutableStateOf(false) }
+                    var showMenu by remember { mutableStateOf(false) }
+                    var selectedEventForEdit by remember { mutableStateOf<EventEntity?>(null) }
 
                     // Simple bottom nav across three tabs - use rememberSaveable to persist across config changes
                     var selectedTab by rememberSaveable { mutableStateOf(0) } // 0: Timeline, 1: Growth, 2: Nursery
@@ -226,11 +234,32 @@ class MainActivity : ComponentActivity() {
                                 TopAppBar(
                                     title = { Text("Contentedest Baby") },
                                     actions = {
-                                        IconButton(onClick = { showStatisticsScreen = true }) {
-                                            Icon(
-                                                imageVector = Icons.Filled.MoreVert,
-                                                contentDescription = "Statistics"
-                                            )
+                                        Box {
+                                            IconButton(onClick = { showMenu = true }) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.MoreVert,
+                                                    contentDescription = "Menu"
+                                                )
+                                            }
+                                            DropdownMenu(
+                                                expanded = showMenu,
+                                                onDismissRequest = { showMenu = false }
+                                            ) {
+                                                DropdownMenuItem(
+                                                    text = { Text("Statistics") },
+                                                    onClick = {
+                                                        showMenu = false
+                                                        showStatisticsScreen = true
+                                                    }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text("Settings") },
+                                                    onClick = {
+                                                        showMenu = false
+                                                        showSettingsScreen = true
+                                                    }
+                                                )
+                                            }
                                         }
                                         IconButton(onClick = { showExportScreen = true }) {
                                             Icon(
@@ -242,12 +271,15 @@ class MainActivity : ComponentActivity() {
                                 )
                             },
                             bottomBar = {
-                                if (!showExportScreen && !showStatisticsScreen) {
+                                if (!showExportScreen && !showStatisticsScreen && !showSettingsScreen && showEventListScreen == null) {
                                     Column {
                                         // Show QuickStatsBar on Timeline tab
                                         if (selectedTab == 0) {
                                             QuickStatsBar(
                                                 eventRepository = eventRepository,
+                                                onEventTypeClick = { eventType ->
+                                                    showEventListScreen = eventType
+                                                },
                                                 modifier = Modifier.fillMaxWidth()
                                             )
                                         }
@@ -296,13 +328,52 @@ class MainActivity : ComponentActivity() {
                                 .padding(innerPadding)) {
                                 StatisticsScreen(
                                     vm = statsVm,
-                                    onNavigateBack = { showStatisticsScreen = false },
-                                    onForceRepair = null, // No longer needed
+                                    onNavigateBack = { showStatisticsScreen = false }
+                                )
+                            }
+                        } else if (showSettingsScreen) {
+                            Box(modifier = Modifier
+                                .fillMaxSize()
+                                .padding(innerPadding)) {
+                                SettingsScreen(
+                                    onNavigateBack = { showSettingsScreen = false },
                                     onForceSync = {
                                         SyncWorker.triggerImmediateSync(this@MainActivity, deviceId)
                                     },
                                     updateChecker = updateChecker
                                 )
+                            }
+                        } else if (showEventListScreen != null) {
+                            Box(modifier = Modifier
+                                .fillMaxSize()
+                                .padding(innerPadding)) {
+                                EventListScreen(
+                                    eventType = showEventListScreen!!,
+                                    eventRepository = eventRepository,
+                                    deviceId = deviceId,
+                                    onNavigateBack = { showEventListScreen = null },
+                                    onEventClick = { event ->
+                                        selectedEventForEdit = event
+                                    }
+                                )
+                                
+                                // Edit event dialog
+                                selectedEventForEdit?.let { event ->
+                                    com.contentedest.baby.ui.timeline.EditEventDialog(
+                                        event = event,
+                                        currentDate = java.time.LocalDate.now(),
+                                        eventRepository = eventRepository,
+                                        deviceId = deviceId,
+                                        onDismiss = {
+                                            selectedEventForEdit = null
+                                        },
+                                        onEventUpdated = {
+                                            selectedEventForEdit = null
+                                            // Trigger sync
+                                            SyncWorker.triggerImmediateSync(this@MainActivity, deviceId)
+                                        }
+                                    )
+                                }
                             }
                         } else {
                             // Main tabs content
