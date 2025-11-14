@@ -36,6 +36,16 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -244,7 +254,36 @@ fun GrowthChart(
         data.firstOrNull()?.unit ?: ""
     }
 
+    // Calculate age in months for each data point (relative to first data point)
+    val firstTs = data.first().ts
+    
+    // Generate percentile data points (only for weight and height)
+    val percentileData = remember(data, category, unit) {
+        if (category != GrowthCategory.weight && category != GrowthCategory.height) {
+            null
+        } else {
+            val percentiles = listOf(5.0, 25.0, 50.0, 75.0, 95.0)
+            percentiles.map { targetPercentile ->
+                data.mapIndexed { index, entity ->
+                    val ageMonths = calculateAgeMonths(firstTs, entity.ts)
+                    val percentileValue = GrowthPercentileCalculator.calculatePercentileValue(
+                        percentile = targetPercentile,
+                        ageMonths = ageMonths,
+                        category = category,
+                        unit = unit
+                    )
+                    if (percentileValue != null) {
+                        LineCartesianLayerModel.Entry(index.toFloat(), percentileValue.toFloat())
+                    } else {
+                        null
+                    }
+                }.filterNotNull()
+            }
+        }
+    }
+
     // Calculate y-axis range: lowest - 10% to highest + 10%
+    // CRITICAL: Keep existing axis calculation logic unchanged
     val (yAxisMin, yAxisMax) = remember(data) {
         if (data.isEmpty()) {
             Pair(null, null)
@@ -266,6 +305,8 @@ fun GrowthChart(
             GrowthCategory.head -> Color(0xFFFF9800)
         }
     }
+    
+    val density = LocalDensity.current
 
     // Create axes using Vico 2.1.4 API companion object functions with white axis labels
     val startAxis = VerticalAxis.rememberStart(
@@ -302,40 +343,364 @@ fun GrowthChart(
         itemPlacer = remember { HorizontalAxis.ItemPlacer.aligned(spacing = { 2 }) }
     )
 
-    // Create line layer with custom Y-axis range (no forced zero) - Vico 2.1.4 API
-    val lineLayer = rememberLineCartesianLayer(
+    // Create main data line layer with custom Y-axis range (no forced zero) - Vico 2.1.4 API
+    // TODO: Add line component styling with reduced opacity for percentile lines
+    // Vico 2.1.4 API for setting line colors/opacity per layer needs to be determined
+    val mainLineLayer = rememberLineCartesianLayer(
         rangeProvider = CartesianLayerRangeProvider.fixed(
             minY = yAxisMin,
             maxY = yAxisMax
         )
     )
 
-    // Create chart with line layer and axes using Vico 2.1.4 API
+    // Create percentile line layers (only for weight and height)
+    // Percentiles: 5th, 25th, 50th, 75th, 95th
+    val percentile50Layer = rememberLineCartesianLayer(
+        rangeProvider = CartesianLayerRangeProvider.fixed(
+            minY = yAxisMin,
+            maxY = yAxisMax
+        )
+    )
+    val percentile25Layer = rememberLineCartesianLayer(
+        rangeProvider = CartesianLayerRangeProvider.fixed(
+            minY = yAxisMin,
+            maxY = yAxisMax
+        )
+    )
+    val percentile75Layer = rememberLineCartesianLayer(
+        rangeProvider = CartesianLayerRangeProvider.fixed(
+            minY = yAxisMin,
+            maxY = yAxisMax
+        )
+    )
+    val percentile5Layer = rememberLineCartesianLayer(
+        rangeProvider = CartesianLayerRangeProvider.fixed(
+            minY = yAxisMin,
+            maxY = yAxisMax
+        )
+    )
+    val percentile95Layer = rememberLineCartesianLayer(
+        rangeProvider = CartesianLayerRangeProvider.fixed(
+            minY = yAxisMin,
+            maxY = yAxisMax
+        )
+    )
+
+    // Combine all layers: main line first, then percentile lines
+    val allLayers = remember(percentileData) {
+        if (percentileData == null) {
+            listOf(mainLineLayer)
+        } else {
+            // Order: main, 50th, 25th, 75th, 5th, 95th
+            listOf(
+                mainLineLayer,
+                percentile50Layer,
+                percentile25Layer,
+                percentile75Layer,
+                percentile5Layer,
+                percentile95Layer
+            )
+        }
+    }
+
+    // Create chart with all layers and axes using Vico 2.1.4 API
     val chart = rememberCartesianChart(
-        lineLayer,
+        *allLayers.toTypedArray(),
         startAxis = startAxis,
         bottomAxis = bottomAxis
     )
 
-    // Create chart model with data
-    val chartModel = remember(data) {
-        val entries = data.mapIndexed { index, entity ->
+    // Create chart model with main data and percentile data
+    // Percentile data order: [5th, 25th, 50th, 75th, 95th]
+    // Layer order: main, 50th, 25th, 75th, 5th, 95th
+    val chartModel = remember(data, percentileData) {
+        val mainEntries = data.mapIndexed { index, entity ->
             LineCartesianLayerModel.Entry(index.toFloat(), entity.value.toFloat())
         }
-        CartesianChartModel(
-            models = listOf(LineCartesianLayerModel(listOf(entries)))
-        )
+        val mainModel = LineCartesianLayerModel(listOf(mainEntries))
+        
+        if (percentileData == null) {
+            CartesianChartModel(
+                models = listOf(mainModel)
+            )
+        } else {
+            // PercentileData is [5th, 25th, 50th, 75th, 95th]
+            // Layer order: main, 50th, 25th, 75th, 5th, 95th
+            val percentile50Model = LineCartesianLayerModel(listOf(percentileData[2])) // 50th
+            val percentile25Model = LineCartesianLayerModel(listOf(percentileData[1])) // 25th
+            val percentile75Model = LineCartesianLayerModel(listOf(percentileData[3])) // 75th
+            val percentile5Model = LineCartesianLayerModel(listOf(percentileData[0]))  // 5th
+            val percentile95Model = LineCartesianLayerModel(listOf(percentileData[4]))  // 95th
+            
+            CartesianChartModel(
+                models = listOf(
+                    mainModel,
+                    percentile50Model,
+                    percentile25Model,
+                    percentile75Model,
+                    percentile5Model,
+                    percentile95Model
+                )
+            )
+        }
     }
 
     val chartScrollState = rememberVicoScrollState()
+    
+    // State for touch interaction
+    var tappedX by remember { mutableStateOf<Float?>(null) }
+    var tappedXScreen by remember { mutableStateOf<Float?>(null) }
+    var tooltipData by remember { mutableStateOf<TooltipData?>(null) }
 
     // Use Vico 2.1.4 API with axes now visible
-    CartesianChartHost(
-        chart = chart,
-        model = chartModel,
+    Box(modifier = modifier) {
+        CartesianChartHost(
+            chart = chart,
+            model = chartModel,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+                .pointerInput(data.size, chartScrollState) {
+                    detectTapGestures { offset ->
+                        // Convert tap offset to chart x-coordinate
+                        // Account for padding (16.dp on each side = 32.dp total)
+                        val paddingPx = with(density) { 32.dp.toPx() }
+                        val visibleWidth = size.width - paddingPx
+                        
+                        // The chart's full width in data points
+                        val maxX = (data.size - 1).toFloat()
+                        val totalDataPoints = maxX + 1
+                        
+                        // Calculate the x position relative to the visible viewport (0 to visibleWidth)
+                        val xInViewport = (offset.x - paddingPx / 2).coerceIn(0f, visibleWidth)
+                        
+                        // Vico charts use data point indices as x-coordinates (0, 1, 2, ...)
+                        // The chart scrolls horizontally, so we need to map the tap position
+                        // to the correct data point index accounting for scroll.
+                        
+                        // Get scroll offset from Vico's scroll state
+                        // VicoScrollState.value gives the scroll position in pixels
+                        val scrollOffsetPx = chartScrollState.value
+                        
+                        // Vico charts use data point indices (0, 1, 2, ...) as x-coordinates
+                        // The chart's pixel width is determined by the number of data points
+                        // and Vico's internal spacing (itemPlacer spacing = { 2 })
+                        
+                        // Calculate the effective width per data point
+                        // Vico's horizontal axis spacing = { 2 } means the chart shows approximately
+                        // 12-15 data points in the visible viewport (depending on screen size)
+                        // We'll calculate this dynamically based on the actual chart dimensions
+                        
+                        // The key insight: Vico's chart width in pixels scales with the number of data points
+                        // Each data point occupies a certain pixel width based on the axis spacing
+                        // With spacing = 2, we estimate ~12-14 data points visible per screen
+                        val estimatedVisibleDataPoints = 13f // Middle estimate for spacing = 2
+                        
+                        // Calculate pixel width per data point based on visible viewport
+                        val dataPointWidthPx = visibleWidth / estimatedVisibleDataPoints
+                        
+                        // Calculate total chart width in pixels
+                        val totalChartWidthPx = totalDataPoints * dataPointWidthPx
+                        
+                        // Check if chart is scrollable
+                        val isScrollable = totalChartWidthPx > visibleWidth
+                        
+                        // Convert scroll offset from pixels to data point index
+                        // The scroll offset tells us how many pixels we've scrolled from the start
+                        val scrollOffsetInDataPoints = if (isScrollable && totalChartWidthPx > 0) {
+                            // Convert pixel scroll to data point offset
+                            // This tells us which data point is at the left edge of the viewport
+                            (scrollOffsetPx / dataPointWidthPx).coerceAtLeast(0f)
+                        } else {
+                            0f // Not scrollable or at the start
+                        }
+                        
+                        // Calculate which data point index corresponds to the tap position
+                        // The tap position is relative to the visible viewport
+                        val xRatioInViewport = xInViewport / visibleWidth
+                        
+                        // Calculate how many data points are visible in the current viewport
+                        val visibleDataPoints = if (isScrollable) {
+                            estimatedVisibleDataPoints
+                        } else {
+                            totalDataPoints
+                        }
+                        
+                        // Calculate the data point index within the visible viewport (0 to visibleDataPoints)
+                        val dataPointIndexInViewport = xRatioInViewport * visibleDataPoints
+                        
+                        // Add the scroll offset to get the absolute data point index in the full chart
+                        val chartX = scrollOffsetInDataPoints + dataPointIndexInViewport
+                        
+                        // Clamp to valid range
+                        val clampedChartX = chartX.coerceIn(0f, maxX)
+                        
+                        tappedX = clampedChartX
+                        tappedXScreen = offset.x
+                        
+                        // Calculate interpolated values
+                        val interpolatedValue = interpolateValue(clampedChartX, data)
+                        val closestIndex = findClosestDayIndex(clampedChartX, data)
+                        val closestDay = data[closestIndex]
+                        val ageMonths = calculateAgeMonths(firstTs, closestDay.ts)
+                        
+                        // Calculate interpolated percentile values
+                        val percentileValues = if (percentileData != null) {
+                            mapOf(
+                                5.0 to interpolatePercentileValue(clampedChartX, percentileData[0]),
+                                25.0 to interpolatePercentileValue(clampedChartX, percentileData[1]),
+                                50.0 to interpolatePercentileValue(clampedChartX, percentileData[2]),
+                                75.0 to interpolatePercentileValue(clampedChartX, percentileData[3]),
+                                95.0 to interpolatePercentileValue(clampedChartX, percentileData[4])
+                            )
+                        } else {
+                            emptyMap()
+                        }
+                        
+                        // Calculate actual percentile for interpolated measurement
+                        val calculatedPercentile = if (interpolatedValue != null && 
+                            (category == GrowthCategory.weight || category == GrowthCategory.height)) {
+                            GrowthPercentileCalculator.calculatePercentile(
+                                value = interpolatedValue,
+                                unit = unit,
+                                ageMonths = ageMonths,
+                                category = category
+                            )
+                        } else {
+                            null
+                        }
+                        
+                        tooltipData = TooltipData(
+                            dayIndex = closestIndex,
+                            dayTs = closestDay.ts,
+                            interpolatedValue = interpolatedValue,
+                            interpolatedPercentileValues = percentileValues,
+                            calculatedPercentile = calculatedPercentile,
+                            unit = unit,
+                            interpolatedY = interpolatedValue?.let { 
+                                // Convert value to y-coordinate for drawing dot
+                                if (yAxisMin != null && yAxisMax != null) {
+                                    val yRange = yAxisMax - yAxisMin
+                                    if (yRange > 0) {
+                                        val yRatio = (it - yAxisMin) / yRange
+                                        yRatio
+                                    } else null
+                                } else null
+                            }
+                        )
+                    }
+                },
+            scrollState = chartScrollState
+        )
+        
+        // Draw visual indicators (vertical line and dot) using Canvas overlay
+        if (tappedXScreen != null && tooltipData != null && tooltipData?.interpolatedY != null) {
+            val paddingPx = with(density) { 16.dp.toPx() }
+            Canvas(modifier = Modifier.matchParentSize()) {
+                val chartHeight = size.height - paddingPx * 2
+                
+                // Draw red vertical line
+                val xPos = tappedXScreen!!
+                val yTop = paddingPx
+                val yBottom = size.height - paddingPx
+                
+                drawLine(
+                    color = Color.Red,
+                    start = Offset(xPos, yTop),
+                    end = Offset(xPos, yBottom),
+                    strokeWidth = with(density) { 2.dp.toPx() }
+                )
+                
+                // Draw red dot at intersection with main plot line
+                val yRatio = tooltipData!!.interpolatedY!!
+                val yPos = yBottom - (chartHeight * yRatio.toFloat())
+                drawCircle(
+                    color = Color.Red,
+                    radius = with(density) { 6.dp.toPx() },
+                    center = Offset(xPos, yPos)
+                )
+            }
+        }
+        
+        // Display tooltip
+        tooltipData?.let { data ->
+            GrowthChartTooltip(
+                data = data,
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
+        }
+    }
+}
+
+/**
+ * Data class to hold tooltip information
+ */
+data class TooltipData(
+    val dayIndex: Int,
+    val dayTs: Long,
+    val interpolatedValue: Double?,
+    val interpolatedPercentileValues: Map<Double, Double?>,
+    val calculatedPercentile: Double?,
+    val unit: String,
+    val interpolatedY: Double? = null // Y ratio (0-1) for drawing dot
+)
+
+/**
+ * Tooltip composable for displaying chart interaction data
+ */
+@Composable
+fun GrowthChartTooltip(
+    data: TooltipData,
+    modifier: Modifier = Modifier
+) {
+    Card(
         modifier = modifier.padding(16.dp),
-        scrollState = chartScrollState
-    )
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Day: ${formatDateShort(data.dayTs)}",
+                style = MaterialTheme.typography.titleMedium
+            )
+            
+            if (data.interpolatedValue != null) {
+                Text(
+                    text = "Value: ${formatValue(data.interpolatedValue, data.unit)}",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
+            
+            if (data.interpolatedPercentileValues.isNotEmpty()) {
+                Text(
+                    text = "Percentiles:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                data.interpolatedPercentileValues.forEach { (percentile, value) ->
+                    if (value != null) {
+                        Text(
+                            text = "  ${percentile.toInt()}th: ${formatValue(value, data.unit)}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
+            
+            if (data.calculatedPercentile != null) {
+                Text(
+                    text = "Calculated Percentile: ${String.format("%.1f", data.calculatedPercentile)}th",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+    }
 }
 
 fun formatAxisValue(value: Double, unit: String, category: GrowthCategory): String {
@@ -402,4 +767,60 @@ fun calculateAgeMonths(firstTs: Long, latestTs: Long): Double {
     val daysDiff = secondsDiff / 86400.0 // Convert seconds to days
     val monthsDiff = daysDiff / 30.4375 // Average days per month (365.25 / 12)
     return monthsDiff
+}
+
+/**
+ * Linearly interpolate a value at a given x position from a list of data points
+ * @param x X position (day index, can be fractional)
+ * @param data List of growth data entities
+ * @return Interpolated value or null if x is out of range
+ */
+fun interpolateValue(x: Float, data: List<com.contentedest.baby.data.local.GrowthDataEntity>): Double? {
+    if (data.isEmpty()) return null
+    
+    val xInt = x.toInt()
+    val xFrac = x - xInt
+    
+    // Clamp to valid range
+    if (xInt < 0) return data.first().value.toDouble()
+    if (xInt >= data.size - 1) return data.last().value.toDouble()
+    
+    // Linear interpolation between two points
+    val y1 = data[xInt].value
+    val y2 = data[xInt + 1].value
+    return y1 + (y2 - y1) * xFrac
+}
+
+/**
+ * Find the closest day index to a given x position
+ * @param x X position (day index)
+ * @param data List of growth data entities
+ * @return Closest day index
+ */
+fun findClosestDayIndex(x: Float, data: List<com.contentedest.baby.data.local.GrowthDataEntity>): Int {
+    if (data.isEmpty()) return 0
+    val xInt = x.toInt()
+    return xInt.coerceIn(0, data.size - 1)
+}
+
+/**
+ * Interpolate percentile value at a given x position
+ * @param x X position (day index, can be fractional)
+ * @param percentileData List of percentile entries (LineCartesianLayerModel.Entry)
+ * @return Interpolated percentile value or null
+ */
+fun interpolatePercentileValue(x: Float, percentileData: List<LineCartesianLayerModel.Entry>): Double? {
+    if (percentileData.isEmpty()) return null
+    
+    val xInt = x.toInt()
+    val xFrac = x - xInt
+    
+    // Clamp to valid range
+    if (xInt < 0) return percentileData.first().y.toDouble()
+    if (xInt >= percentileData.size - 1) return percentileData.last().y.toDouble()
+    
+    // Linear interpolation between two points
+    val y1 = percentileData[xInt].y
+    val y2 = percentileData[xInt + 1].y
+    return (y1 + (y2 - y1) * xFrac).toDouble()
 }
