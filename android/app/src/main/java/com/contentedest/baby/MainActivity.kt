@@ -10,7 +10,8 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.TrendingUp
@@ -95,7 +96,6 @@ class MainActivity : ComponentActivity() {
                     var showStatisticsScreen by remember { mutableStateOf(false) }
                     var showEventListScreen by remember { mutableStateOf<EventType?>(null) }
                     var showSettingsScreen by remember { mutableStateOf(false) }
-                    var showMenu by remember { mutableStateOf(false) }
                     var selectedEventForEdit by remember { mutableStateOf<EventEntity?>(null) }
 
                     // Simple bottom nav across three tabs - use rememberSaveable to persist across config changes
@@ -234,32 +234,17 @@ class MainActivity : ComponentActivity() {
                                 TopAppBar(
                                     title = { Text("Contentedest Baby") },
                                     actions = {
-                                        Box {
-                                            IconButton(onClick = { showMenu = true }) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.MoreVert,
-                                                    contentDescription = "Menu"
-                                                )
-                                            }
-                                            DropdownMenu(
-                                                expanded = showMenu,
-                                                onDismissRequest = { showMenu = false }
-                                            ) {
-                                                DropdownMenuItem(
-                                                    text = { Text("Statistics") },
-                                                    onClick = {
-                                                        showMenu = false
-                                                        showStatisticsScreen = true
-                                                    }
-                                                )
-                                                DropdownMenuItem(
-                                                    text = { Text("Settings") },
-                                                    onClick = {
-                                                        showMenu = false
-                                                        showSettingsScreen = true
-                                                    }
-                                                )
-                                            }
+                                        IconButton(onClick = { showStatisticsScreen = true }) {
+                                            Icon(
+                                                imageVector = Icons.Filled.BarChart,
+                                                contentDescription = "Statistics"
+                                            )
+                                        }
+                                        IconButton(onClick = { showSettingsScreen = true }) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Settings,
+                                                contentDescription = "Settings"
+                                            )
                                         }
                                         IconButton(onClick = { showExportScreen = true }) {
                                             Icon(
