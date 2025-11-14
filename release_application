@@ -16,6 +16,10 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Ensure PATH includes standard directories for system utilities (xargs, etc.)
+# This is needed for gradlew which checks for xargs availability
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
 # File paths
 BUILD_GRADLE="android/app/build.gradle.kts"
 SERVER_MAIN="server/app/main.py"
@@ -159,11 +163,41 @@ build_apk() {
     fi
     
     # Clean and build
+    # Ensure PATH includes standard directories before running gradlew
+    # gradlew uses /bin/sh and checks for xargs, so PATH must be set correctly
+    # Prepend standard paths to ensure they're found first
+    export PATH="/usr/bin:/bin:/usr/sbin:/sbin:${PATH}"
+    
+    # Verify xargs is available (for debugging)
+    if ! command -v xargs >/dev/null 2>&1; then
+        print_error "xargs not found in PATH: $PATH"
+        exit 1
+    fi
+    
+    # Explicitly set and export PATH for gradlew
+    # gradlew uses /bin/sh which checks for xargs early in execution
+    # We must ensure PATH is exported in the current shell so it's inherited
+    local gradle_path="/usr/bin:/bin:/usr/sbin:/sbin:${PATH}"
+    export PATH="$gradle_path"
+    if [ -n "$JAVA_HOME" ]; then
+        export JAVA_HOME
+    fi
+    
+    # Debug: verify xargs is available with current PATH
+    if ! command -v xargs >/dev/null 2>&1; then
+        print_error "xargs still not found after setting PATH. PATH=$PATH"
+        exit 1
+    fi
+    
+    # gradlew has been modified to set PATH at the start, so we can call it normally
     print_info "Cleaning previous build..."
     ./gradlew clean
     
     print_info "Building release APK (this may take a few minutes)..."
     ./gradlew assembleRelease
+    
+    # Restore original PATH (optional, but clean)
+    export PATH="${PATH#/usr/bin:/bin:/usr/sbin:/sbin:}"
     
     cd ..
     
