@@ -205,6 +205,62 @@ object GrowthPercentileCalculator {
     }
     
     /**
+     * Inverse error function approximation
+     * Based on Winitzki's approximation
+     */
+    private fun erfinv(x: Double): Double {
+        val a = 0.147
+        val sign = if (x < 0) -1.0 else 1.0
+        val absX = abs(x)
+        
+        val lnTerm = ln(1.0 - absX * absX)
+        val sqrtTerm = sqrt((2.0 / (PI * a)) + lnTerm / 2.0)
+        val result = sign * sqrt(sqrtTerm - lnTerm / 2.0)
+        
+        return result
+    }
+    
+    /**
+     * Convert percentile to z-score (inverse of zScoreToPercentile)
+     * @param percentile Percentile value (0-100)
+     * @return Z-score
+     */
+    private fun percentileToZScore(percentile: Double): Double {
+        // Clamp percentile to valid range
+        val clampedPercentile = percentile.coerceIn(0.01, 99.99)
+        
+        // Convert percentile to probability (0-1)
+        val p = clampedPercentile / 100.0
+        
+        // Convert to value for error function: P(Z <= z) = 0.5 * (1 + erf(z / sqrt(2)))
+        // So: erf(z / sqrt(2)) = 2p - 1
+        val erfValue = 2.0 * p - 1.0
+        
+        // Inverse error function
+        val zOverSqrt2 = erfinv(erfValue)
+        
+        // Return z-score
+        return zOverSqrt2 * sqrt(2.0)
+    }
+    
+    /**
+     * Calculate measurement value from z-score and LMS values (inverse of calculateZScore)
+     * @param zScore Z-score
+     * @param lms LMS values
+     * @return Measurement value
+     */
+    private fun zScoreToMeasurement(zScore: Double, lms: LMSValues): Double {
+        return if (abs(lms.l) < 1e-10) {
+            // L == 0: Z = ln(X/M) / S, so X = M * exp(Z * S)
+            lms.m * exp(zScore * lms.s)
+        } else {
+            // L != 0: Z = ((X/M)^L - 1) / (L * S), so (X/M)^L = 1 + Z * L * S
+            // So X = M * (1 + Z * L * S)^(1/L)
+            lms.m * (1.0 + zScore * lms.l * lms.s).pow(1.0 / lms.l)
+        }
+    }
+    
+    /**
      * Convert weight from pounds to kilograms
      * 1 pound = 0.45359237 kilograms (exact conversion)
      */
@@ -278,6 +334,85 @@ object GrowthPercentileCalculator {
                     else -> return null // Unknown unit
                 }
                 calculateHeightPercentile(heightCm, ageMonths)
+            }
+            else -> null // Head circumference not supported
+        }
+    }
+    
+    /**
+     * Calculate weight value for a given percentile at a specific age
+     * @param percentile Percentile value (0-100)
+     * @param ageMonths Age in months
+     * @return Weight in kilograms, or null if calculation fails
+     */
+    fun calculateWeightValueForPercentile(percentile: Double, ageMonths: Double): Double? {
+        val lms = findLMSValues(ageMonths, weightLMSData) ?: return null
+        val zScore = percentileToZScore(percentile)
+        return zScoreToMeasurement(zScore, lms)
+    }
+    
+    /**
+     * Calculate height value for a given percentile at a specific age
+     * @param percentile Percentile value (0-100)
+     * @param ageMonths Age in months
+     * @return Height in centimeters, or null if calculation fails
+     */
+    fun calculateHeightValueForPercentile(percentile: Double, ageMonths: Double): Double? {
+        val lms = findLMSValues(ageMonths, heightLMSData) ?: return null
+        val zScore = percentileToZScore(percentile)
+        return zScoreToMeasurement(zScore, lms)
+    }
+    
+    /**
+     * Convert kilograms to pounds
+     * 1 kilogram = 2.20462262 pounds
+     */
+    private fun kilogramsToPounds(kg: Double): Double {
+        return kg * 2.20462262
+    }
+    
+    /**
+     * Convert centimeters to inches
+     * 1 centimeter = 0.393700787 inches
+     */
+    private fun centimetersToInches(cm: Double): Double {
+        return cm * 0.393700787
+    }
+    
+    /**
+     * Calculate percentile value for a growth measurement
+     * Handles unit conversion automatically
+     * @param percentile Percentile value (0-100)
+     * @param ageMonths Age in months
+     * @param category Growth category (weight or height)
+     * @param unit Desired output unit string ("lb", "kg", "in", "cm")
+     * @return Measurement value in the specified unit, or null if calculation fails
+     */
+    fun calculatePercentileValue(
+        percentile: Double,
+        ageMonths: Double,
+        category: com.contentedest.baby.data.local.GrowthCategory,
+        unit: String
+    ): Double? {
+        // Normalize unit string (trim whitespace and convert to lowercase)
+        val normalizedUnit = unit.trim().lowercase()
+        
+        return when (category) {
+            com.contentedest.baby.data.local.GrowthCategory.weight -> {
+                val weightKg = calculateWeightValueForPercentile(percentile, ageMonths) ?: return null
+                when (normalizedUnit) {
+                    "lb", "lbs", "pound", "pounds" -> kilogramsToPounds(weightKg)
+                    "kg", "kilogram", "kilograms" -> weightKg
+                    else -> return null // Unknown unit
+                }
+            }
+            com.contentedest.baby.data.local.GrowthCategory.height -> {
+                val heightCm = calculateHeightValueForPercentile(percentile, ageMonths) ?: return null
+                when (normalizedUnit) {
+                    "in", "inch", "inches" -> centimetersToInches(heightCm)
+                    "cm", "centimeter", "centimeters" -> heightCm
+                    else -> return null // Unknown unit
+                }
             }
             else -> null // Head circumference not supported
         }
