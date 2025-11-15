@@ -35,6 +35,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.platform.LocalContext
 import com.contentedest.baby.data.local.EventEntity
+import com.contentedest.baby.timer.TimerStateStorage
+import com.contentedest.baby.timer.TimerBackgroundService
+import com.contentedest.baby.timer.TimerUpdateWorker
+import android.content.Intent
 import com.contentedest.baby.data.local.EventType
 import com.contentedest.baby.data.local.FeedMode
 import com.contentedest.baby.data.repo.EventRepository
@@ -92,6 +96,7 @@ fun TimelineScreen(
     val context = LocalContext.current
     val events by vm.events.collectAsState()
     var currentDate by remember { mutableStateOf(date) }
+    val timerStateStorage = remember { TimerStateStorage(context) }
 
     // Load events when date changes
     LaunchedEffect(currentDate) {
@@ -121,6 +126,39 @@ fun TimelineScreen(
 
     var showLivePicker by remember { mutableStateOf(false) }
     var activeLiveType by remember { mutableStateOf<EventType?>(null) }
+    
+    // Check for active timer state on screen load and restore if needed
+    LaunchedEffect(Unit) {
+        val activeTimer = timerStateStorage.getActiveTimer()
+        if (activeTimer != null && activeTimer.running) {
+            // Restore the appropriate dialog based on timer type
+            when (activeTimer.type) {
+                EventType.sleep -> {
+                    // Calculate elapsed time
+                    val now = java.time.Instant.now().epochSecond
+                    val elapsed = now - activeTimer.startEpoch
+                    // Restore sleep dialog state
+                    savedLiveSleepState = LiveSleepDialogState(
+                        running = true,
+                        startEpoch = activeTimer.startEpoch,
+                        endEpoch = now, // Current time
+                        details = activeTimer.details
+                    )
+                    activeLiveType = EventType.sleep
+                }
+                EventType.feed -> {
+                    // Restore feed dialog state
+                    savedLiveFeedState = LiveFeedDialogState(
+                        activeSide = activeTimer.activeSide,
+                        segments = activeTimer.segments,
+                        currentStart = activeTimer.currentStart
+                    )
+                    activeLiveType = EventType.feed
+                }
+                else -> { /* Nappy doesn't need timer persistence */ }
+            }
+        }
+    }
 
     Column(modifier = modifier.fillMaxSize()) {
         // Date header with navigation
@@ -169,8 +207,29 @@ fun TimelineScreen(
             // Floating "+" button for live add or restore saved dialog
             FloatingActionButton(
                 onClick = { 
-                    // If there's saved state, restore the appropriate dialog
+                    // Check for saved state first - if exists, restore it
+                    // This allows recovery after app crash/close
+                    val activeTimer = timerStateStorage.getActiveTimer()
                     when {
+                        activeTimer != null && activeTimer.type == EventType.sleep -> {
+                            // Restore sleep dialog
+                            savedLiveSleepState = LiveSleepDialogState(
+                                running = activeTimer.running,
+                                startEpoch = activeTimer.startEpoch,
+                                endEpoch = if (activeTimer.running) java.time.Instant.now().epochSecond else activeTimer.endEpoch,
+                                details = activeTimer.details
+                            )
+                            activeLiveType = EventType.sleep
+                        }
+                        activeTimer != null && activeTimer.type == EventType.feed -> {
+                            // Restore feed dialog
+                            savedLiveFeedState = LiveFeedDialogState(
+                                activeSide = activeTimer.activeSide,
+                                segments = activeTimer.segments,
+                                currentStart = activeTimer.currentStart
+                            )
+                            activeLiveType = EventType.feed
+                        }
                         savedLiveSleepState != null -> activeLiveType = EventType.sleep
                         savedLiveFeedState != null -> activeLiveType = EventType.feed
                         savedLiveNappyState != null -> activeLiveType = EventType.nappy
@@ -245,6 +304,13 @@ fun TimelineScreen(
                 onDismiss = { showLivePicker = false },
                 onPick = { type ->
                     showLivePicker = false
+                    // Clear any saved state for this type when explicitly starting a new event from picker
+                    // This ensures a fresh start when user explicitly chooses a type
+                    when (type) {
+                        EventType.sleep -> savedLiveSleepState = null
+                        EventType.feed -> savedLiveFeedState = null
+                        EventType.nappy -> savedLiveNappyState = null
+                    }
                     activeLiveType = type
                 }
             )
@@ -307,13 +373,27 @@ fun TimelineScreen(
             AlertDialog(
                 onDismissRequest = { showLiveCancelConfirmation = false },
                 title = { Text("Discard changes?") },
-                text = { Text("Your event information will be saved so you can continue later by pressing the '+' button.") },
+                text = { Text("This will permanently discard the current event. You can start a new event by pressing the '+' button.") },
                 confirmButton = {
                     TextButton(
                         onClick = {
                             showLiveCancelConfirmation = false
                             activeLiveType = null
-                            // Keep saved state so user can restore it later with '+' button
+                            // Clear both persistent and in-memory state when discarding
+                            timerStateStorage.clearActiveTimer()
+                            // Stop background service
+                            val serviceIntent = Intent(context, TimerBackgroundService::class.java)
+                            context.stopService(serviceIntent)
+                            // Cancel WorkManager updates
+                            TimerUpdateWorker.cancelUpdate(context)
+                            // Clear in-memory saved state based on the pending type
+                            when (pendingLiveTypeForCancel) {
+                                EventType.sleep -> savedLiveSleepState = null
+                                EventType.feed -> savedLiveFeedState = null
+                                EventType.nappy -> savedLiveNappyState = null
+                                null -> {}
+                            }
+                            pendingLiveTypeForCancel = null
                         }
                     ) {
                         Text("Discard")
@@ -373,15 +453,62 @@ fun LiveSleepDialog(
     onCancel: () -> Unit,
     onSaved: () -> Unit
 ) {
-    // Initialize state from saved state or defaults
-    var running by remember { mutableStateOf(savedState?.running ?: false) }
-    var startEpoch by remember { mutableStateOf<Long?>(savedState?.startEpoch) }
-    var endEpoch by remember { mutableStateOf<Long?>(savedState?.endEpoch) }
-    var details by remember { mutableStateOf<String?>(savedState?.details) }
+    val context = LocalContext.current
+    val timerStateStorage = remember { TimerStateStorage(context) }
+    
+    // Check for persisted timer state on dialog open
+    LaunchedEffect(Unit) {
+        val persistedState = timerStateStorage.getActiveTimer()
+        if (persistedState != null && persistedState.type == EventType.sleep) {
+            // Restore from persisted state
+            if (persistedState.running) {
+                // Calculate elapsed time if timer was running
+                val now = java.time.Instant.now().epochSecond
+                val elapsed = now - persistedState.startEpoch
+                // Restore state with updated end time
+                // Note: We'll update the local state below
+            }
+        }
+    }
+    
+    // Initialize state from saved state, persisted state, or defaults
+    var running by remember { 
+        mutableStateOf(
+            savedState?.running 
+                ?: timerStateStorage.getActiveTimer()?.takeIf { it.type == EventType.sleep }?.running 
+                ?: false
+        ) 
+    }
+    var startEpoch by remember { 
+        mutableStateOf<Long?>(
+            savedState?.startEpoch 
+                ?: timerStateStorage.getActiveTimer()?.takeIf { it.type == EventType.sleep }?.startEpoch
+        ) 
+    }
+    var endEpoch by remember { 
+        mutableStateOf<Long?>(
+            savedState?.endEpoch 
+                ?: timerStateStorage.getActiveTimer()?.takeIf { it.type == EventType.sleep }?.let { state ->
+                    if (state.running) {
+                        // If timer was running, calculate current end time
+                        java.time.Instant.now().epochSecond
+                    } else {
+                        state.endEpoch
+                    }
+                }
+        ) 
+    }
+    var details by remember { 
+        mutableStateOf<String?>(
+            savedState?.details 
+                ?: timerStateStorage.getActiveTimer()?.takeIf { it.type == EventType.sleep }?.details
+        ) 
+    }
     val scope = rememberCoroutineScope()
 
-    // Save state whenever it changes
+    // Save state to both in-memory and persistent storage
     LaunchedEffect(running, startEpoch, endEpoch, details) {
+        // Save to in-memory state (for UI state preservation)
         onStateChanged(
             LiveSleepDialogState(
                 running = running,
@@ -390,6 +517,32 @@ fun LiveSleepDialog(
                 details = details
             )
         )
+        
+        // Save to persistent storage (for background persistence)
+        if (startEpoch != null && endEpoch != null) {
+            timerStateStorage.saveActiveTimer(
+                type = EventType.sleep,
+                startEpoch = startEpoch!!,
+                endEpoch = endEpoch!!,
+                running = running,
+                details = details
+            )
+            
+            // Start/stop background service and WorkManager
+            if (running) {
+                // Start background service
+                val serviceIntent = Intent(context, TimerBackgroundService::class.java)
+                context.startService(serviceIntent)
+                // Schedule periodic WorkManager updates
+                TimerUpdateWorker.schedulePeriodicUpdate(context)
+            } else {
+                // Stop background service
+                val serviceIntent = Intent(context, TimerBackgroundService::class.java)
+                context.stopService(serviceIntent)
+                // Cancel WorkManager updates
+                TimerUpdateWorker.cancelUpdate(context)
+            }
+        }
     }
 
     LaunchedEffect(running) {
@@ -425,7 +578,19 @@ fun LiveSleepDialog(
                             running = false
                         }
                     }, modifier = Modifier.weight(1f)) { Text(if (running) "Pause" else "Play") }
-                    OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                    OutlinedButton(
+                        onClick = {
+                            // Clear persistent timer state on cancel
+                            timerStateStorage.clearActiveTimer()
+                            // Stop background service
+                            val serviceIntent = Intent(context, TimerBackgroundService::class.java)
+                            context.stopService(serviceIntent)
+                            // Cancel WorkManager updates
+                            TimerUpdateWorker.cancelUpdate(context)
+                            onCancel()
+                        }, 
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Cancel") }
                 }
                 Button(
                     onClick = {
@@ -434,6 +599,13 @@ fun LiveSleepDialog(
                         if (start != null && end != null && end >= start) {
                             scope.launch {
                                 eventRepository.insertSleepSpan(deviceId, start, end, details)
+                                // Clear persistent timer state
+                                timerStateStorage.clearActiveTimer()
+                                // Stop background service
+                                val serviceIntent = Intent(context, TimerBackgroundService::class.java)
+                                context.stopService(serviceIntent)
+                                // Cancel WorkManager updates
+                                TimerUpdateWorker.cancelUpdate(context)
                                 onSaved()
                                 onDismiss()
                             }
@@ -457,14 +629,42 @@ fun LiveFeedDialog(
     onCancel: () -> Unit,
     onSaved: () -> Unit
 ) {
+    val context = LocalContext.current
+    val timerStateStorage = remember { TimerStateStorage(context) }
     val scope = rememberCoroutineScope()
-    // Initialize state from saved state or defaults
-    var activeSide by remember { mutableStateOf<com.contentedest.baby.data.local.BreastSide?>(savedState?.activeSide) }
-    var segments by remember { mutableStateOf(savedState?.segments ?: emptyList()) }
-    var currentStart by remember { mutableStateOf<Long?>(savedState?.currentStart) }
+    
+    // Check for persisted timer state on dialog open
+    LaunchedEffect(Unit) {
+        val persistedState = timerStateStorage.getActiveTimer()
+        if (persistedState != null && persistedState.type == EventType.feed) {
+            // State will be restored in remember blocks below
+        }
+    }
+    
+    // Initialize state from saved state, persisted state, or defaults
+    var activeSide by remember { 
+        mutableStateOf<com.contentedest.baby.data.local.BreastSide?>(
+            savedState?.activeSide 
+                ?: timerStateStorage.getActiveTimer()?.takeIf { it.type == EventType.feed }?.activeSide
+        ) 
+    }
+    var segments by remember { 
+        mutableStateOf(
+            savedState?.segments 
+                ?: timerStateStorage.getActiveTimer()?.takeIf { it.type == EventType.feed }?.segments
+                ?: emptyList()
+        ) 
+    }
+    var currentStart by remember { 
+        mutableStateOf<Long?>(
+            savedState?.currentStart 
+                ?: timerStateStorage.getActiveTimer()?.takeIf { it.type == EventType.feed }?.currentStart
+        ) 
+    }
     
     // Save state whenever it changes
     LaunchedEffect(activeSide, segments, currentStart) {
+        // Save to in-memory state (for UI state preservation)
         onStateChanged(
             LiveFeedDialogState(
                 activeSide = activeSide,
@@ -472,6 +672,43 @@ fun LiveFeedDialog(
                 currentStart = currentStart
             )
         )
+        
+        // Save to persistent storage (for background persistence)
+        // For feed, we need to determine if timer is "running" (activeSide != null)
+        val isRunning = activeSide != null
+        val startEpoch = segments.firstOrNull()?.second ?: currentStart ?: 0L
+        val endEpoch = if (isRunning && currentStart != null) {
+            java.time.Instant.now().epochSecond
+        } else {
+            segments.lastOrNull()?.third ?: currentStart ?: 0L
+        }
+        
+        if (startEpoch > 0) {
+            timerStateStorage.saveActiveTimer(
+                type = EventType.feed,
+                startEpoch = startEpoch,
+                endEpoch = endEpoch,
+                running = isRunning,
+                segments = segments,
+                activeSide = activeSide,
+                currentStart = currentStart
+            )
+            
+            // Start/stop background service and WorkManager
+            if (isRunning) {
+                // Start background service
+                val serviceIntent = Intent(context, TimerBackgroundService::class.java)
+                context.startService(serviceIntent)
+                // Schedule periodic WorkManager updates
+                TimerUpdateWorker.schedulePeriodicUpdate(context)
+            } else {
+                // Stop background service
+                val serviceIntent = Intent(context, TimerBackgroundService::class.java)
+                context.stopService(serviceIntent)
+                // Cancel WorkManager updates
+                TimerUpdateWorker.cancelUpdate(context)
+            }
+        }
     }
 
     var totalSeconds by remember { mutableStateOf(0L) }
@@ -543,7 +780,19 @@ fun LiveFeedDialog(
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                    OutlinedButton(
+                        onClick = {
+                            // Clear persistent timer state on cancel
+                            timerStateStorage.clearActiveTimer()
+                            // Stop background service
+                            val serviceIntent = Intent(context, TimerBackgroundService::class.java)
+                            context.stopService(serviceIntent)
+                            // Cancel WorkManager updates
+                            TimerUpdateWorker.cancelUpdate(context)
+                            onCancel()
+                        }, 
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Cancel") }
                     Button(
                         onClick = {
                             if (activeSide != null && currentStart != null) {
@@ -554,6 +803,13 @@ fun LiveFeedDialog(
                             }
                             scope.launch {
                                 eventRepository.insertBreastFeed(deviceId, segments)
+                                // Clear persistent timer state
+                                timerStateStorage.clearActiveTimer()
+                                // Stop background service
+                                val serviceIntent = Intent(context, TimerBackgroundService::class.java)
+                                context.stopService(serviceIntent)
+                                // Cancel WorkManager updates
+                                TimerUpdateWorker.cancelUpdate(context)
                                 onSaved(); onDismiss()
                             }
                         },

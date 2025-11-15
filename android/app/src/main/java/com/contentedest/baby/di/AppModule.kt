@@ -9,6 +9,7 @@ import com.contentedest.baby.data.repo.EventRepository
 import com.contentedest.baby.data.repo.GrowthRepository
 // import com.contentedest.baby.data.repo.SyncRepository // Assuming this isn't used directly in AppModule now
 import com.contentedest.baby.net.TokenStorage
+import com.contentedest.baby.timer.TimerStateStorage
 // SyncWorker is no longer directly bound here
 import dagger.Module
 import dagger.Provides
@@ -72,6 +73,10 @@ object AppModule {
     @Provides
     @Singleton
     fun provideTokenStorage(@ApplicationContext context: Context): TokenStorage = TokenStorage(context)
+
+    @Provides
+    @Singleton
+    fun provideTimerStateStorage(@ApplicationContext context: Context): TimerStateStorage = TimerStateStorage(context)
 
 }
 

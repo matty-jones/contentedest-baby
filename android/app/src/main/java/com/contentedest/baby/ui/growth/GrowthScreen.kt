@@ -462,106 +462,75 @@ fun GrowthChart(
                 .padding(16.dp)
                 .pointerInput(data.size, chartScrollState) {
                     detectTapGestures { offset ->
-                        // Convert tap offset to chart x-coordinate
-                        // Account for padding (16.dp on each side = 32.dp total)
-                        val paddingPx = with(density) { 32.dp.toPx() }
-                        val visibleWidth = size.width - paddingPx
+                        // All calculations use density-independent units (dp converted to px)
+                        val paddingPx = with(density) { 16.dp.toPx() }
+                        val chartAreaStartX = paddingPx
+                        val chartAreaEndX = size.width - paddingPx
+                        val visibleWidth = chartAreaEndX - chartAreaStartX
+                        val tapX = offset.x
                         
-                        // The chart's full width in data points
-                        val maxX = (data.size - 1).toFloat()
-                        val totalDataPoints = maxX + 1
-                        
-                        // Calculate the x position relative to the visible viewport (0 to visibleWidth)
-                        val xInViewport = (offset.x - paddingPx / 2).coerceIn(0f, visibleWidth)
-                        
-                        // Vico charts use data point indices as x-coordinates (0, 1, 2, ...)
-                        // The chart scrolls horizontally, so we need to map the tap position
-                        // to the correct data point index accounting for scroll.
-                        
-                        // Get scroll offset from Vico's scroll state
-                        // VicoScrollState.value gives the scroll position in pixels
                         val scrollOffsetPx = chartScrollState.value
+                        val maxScrollablePx = chartScrollState.maxValue
+                        val totalDataPoints = data.size.toFloat()
                         
-                        // Vico charts use data point indices (0, 1, 2, ...) as x-coordinates
-                        // The chart's pixel width is determined by the number of data points
-                        // and Vico's internal spacing (itemPlacer spacing = { 2 })
-                        
-                        // Calculate the effective width per data point
-                        // Vico's horizontal axis spacing = { 2 } means the chart shows approximately
-                        // 12-15 data points in the visible viewport (depending on screen size)
-                        // We'll calculate this dynamically based on the actual chart dimensions
-                        
-                        // The key insight: Vico's chart width in pixels scales with the number of data points
-                        // Each data point occupies a certain pixel width based on the axis spacing
-                        // With spacing = 2, we estimate ~12-14 data points visible per screen
-                        val estimatedVisibleDataPoints = 13f // Middle estimate for spacing = 2
-                        
-                        // Calculate pixel width per data point based on visible viewport
-                        val dataPointWidthPx = visibleWidth / estimatedVisibleDataPoints
-                        
-                        // Calculate total chart width in pixels
-                        val totalChartWidthPx = totalDataPoints * dataPointWidthPx
-                        
-                        // Check if chart is scrollable
-                        val isScrollable = totalChartWidthPx > visibleWidth
-                        
-                        // Convert scroll offset from pixels to data point index
-                        // The scroll offset tells us how many pixels we've scrolled from the start
-                        val scrollOffsetInDataPoints = if (isScrollable && totalChartWidthPx > 0) {
-                            // Convert pixel scroll to data point offset
-                            // This tells us which data point is at the left edge of the viewport
-                            (scrollOffsetPx / dataPointWidthPx).coerceAtLeast(0f)
+                        // Calculate data point width from scroll state (proportional to screen size)
+                        val dataPointWidthPx = if (maxScrollablePx > 0f && totalDataPoints > 1f) {
+                            val totalChartWidthPx = maxScrollablePx + visibleWidth
+                            totalChartWidthPx / totalDataPoints
                         } else {
-                            0f // Not scrollable or at the start
+                            visibleWidth / totalDataPoints.coerceAtLeast(1f)
                         }
                         
-                        // Calculate which data point index corresponds to the tap position
-                        // The tap position is relative to the visible viewport
-                        val xRatioInViewport = xInViewport / visibleWidth
+                        // Calculate left padding proportionally based on screen width
+                        // Vico's y-axis labels take up roughly 15-20% of screen width on average
+                        // This is density-independent and scales with screen size
+                        val leftPaddingRatio = 0.18f // 18% of visible width for y-axis labels
+                        val leftPaddingPx = visibleWidth * leftPaddingRatio
                         
-                        // Calculate how many data points are visible in the current viewport
-                        val visibleDataPoints = if (isScrollable) {
-                            estimatedVisibleDataPoints
-                        } else {
-                            totalDataPoints
+                        // Find the closest data point to the tap position
+                        // Calculate where each data point is drawn on screen and find the closest one
+                        var closestIndex = 0
+                        var minDistance = Float.MAX_VALUE
+                        var closestDataPointX = 0f
+                        
+                        for (i in data.indices) {
+                            // Calculate where this data point is drawn on screen
+                            // Data point position in chart coordinate space
+                            // Position = leftPadding + (dataPointIndex * dataPointWidth) - scrollOffset
+                            val dataPointXInChart = leftPaddingPx + (i * dataPointWidthPx) - scrollOffsetPx
+                            val dataPointXOnScreen = chartAreaStartX + dataPointXInChart
+                            
+                            // Calculate distance to tap position (check all points)
+                            val distance = kotlin.math.abs(tapX - dataPointXOnScreen)
+                            if (distance < minDistance) {
+                                minDistance = distance
+                                closestIndex = i
+                                // Don't clamp - use actual position even if slightly off-screen
+                                closestDataPointX = dataPointXOnScreen
+                            }
                         }
                         
-                        // Calculate the data point index within the visible viewport (0 to visibleDataPoints)
-                        val dataPointIndexInViewport = xRatioInViewport * visibleDataPoints
+                        // Use the closest data point
+                        val selectedDataPoint = data[closestIndex]
+                        val ageMonths = calculateAgeMonths(firstTs, selectedDataPoint.ts)
                         
-                        // Add the scroll offset to get the absolute data point index in the full chart
-                        val chartX = scrollOffsetInDataPoints + dataPointIndexInViewport
-                        
-                        // Clamp to valid range
-                        val clampedChartX = chartX.coerceIn(0f, maxX)
-                        
-                        tappedX = clampedChartX
-                        tappedXScreen = offset.x
-                        
-                        // Calculate interpolated values
-                        val interpolatedValue = interpolateValue(clampedChartX, data)
-                        val closestIndex = findClosestDayIndex(clampedChartX, data)
-                        val closestDay = data[closestIndex]
-                        val ageMonths = calculateAgeMonths(firstTs, closestDay.ts)
-                        
-                        // Calculate interpolated percentile values
+                        // Calculate percentile values for this data point (no interpolation)
                         val percentileValues = if (percentileData != null) {
                             mapOf(
-                                5.0 to interpolatePercentileValue(clampedChartX, percentileData[0]),
-                                25.0 to interpolatePercentileValue(clampedChartX, percentileData[1]),
-                                50.0 to interpolatePercentileValue(clampedChartX, percentileData[2]),
-                                75.0 to interpolatePercentileValue(clampedChartX, percentileData[3]),
-                                95.0 to interpolatePercentileValue(clampedChartX, percentileData[4])
-                            )
+                                5.0 to percentileData[0].getOrNull(closestIndex)?.y?.toDouble(),
+                                25.0 to percentileData[1].getOrNull(closestIndex)?.y?.toDouble(),
+                                50.0 to percentileData[2].getOrNull(closestIndex)?.y?.toDouble(),
+                                75.0 to percentileData[3].getOrNull(closestIndex)?.y?.toDouble(),
+                                95.0 to percentileData[4].getOrNull(closestIndex)?.y?.toDouble()
+                            ).filterValues { it != null }.mapValues { it.value!! }
                         } else {
                             emptyMap()
                         }
                         
-                        // Calculate actual percentile for interpolated measurement
-                        val calculatedPercentile = if (interpolatedValue != null && 
-                            (category == GrowthCategory.weight || category == GrowthCategory.height)) {
+                        // Calculate actual percentile for this measurement
+                        val calculatedPercentile = if (category == GrowthCategory.weight || category == GrowthCategory.height) {
                             GrowthPercentileCalculator.calculatePercentile(
-                                value = interpolatedValue,
+                                value = selectedDataPoint.value,
                                 unit = unit,
                                 ageMonths = ageMonths,
                                 category = category
@@ -570,23 +539,25 @@ fun GrowthChart(
                             null
                         }
                         
+                        // Calculate y position for drawing dot
+                        val yRatio = if (yAxisMin != null && yAxisMax != null) {
+                            val yRange = yAxisMax - yAxisMin
+                            if (yRange > 0) {
+                                (selectedDataPoint.value - yAxisMin) / yRange
+                            } else null
+                        } else null
+                        
+                        tappedX = closestIndex.toFloat()
+                        tappedXScreen = closestDataPointX
+                        
                         tooltipData = TooltipData(
                             dayIndex = closestIndex,
-                            dayTs = closestDay.ts,
-                            interpolatedValue = interpolatedValue,
+                            dayTs = selectedDataPoint.ts,
+                            interpolatedValue = selectedDataPoint.value,
                             interpolatedPercentileValues = percentileValues,
                             calculatedPercentile = calculatedPercentile,
                             unit = unit,
-                            interpolatedY = interpolatedValue?.let { 
-                                // Convert value to y-coordinate for drawing dot
-                                if (yAxisMin != null && yAxisMax != null) {
-                                    val yRange = yAxisMax - yAxisMin
-                                    if (yRange > 0) {
-                                        val yRatio = (it - yAxisMin) / yRange
-                                        yRatio
-                                    } else null
-                                } else null
-                            }
+                            interpolatedY = yRatio
                         )
                     }
                 },
@@ -598,12 +569,15 @@ fun GrowthChart(
             val paddingPx = with(density) { 16.dp.toPx() }
             Canvas(modifier = Modifier.matchParentSize()) {
                 val chartHeight = size.height - paddingPx * 2
+                val chartAreaStartX = paddingPx
+                val chartAreaEndX = size.width - paddingPx
                 
-                // Draw red vertical line
-                val xPos = tappedXScreen!!
+                // Clamp x position to visible chart area
+                val xPos = tappedXScreen!!.coerceIn(chartAreaStartX, chartAreaEndX)
                 val yTop = paddingPx
                 val yBottom = size.height - paddingPx
                 
+                // Draw red vertical line
                 drawLine(
                     color = Color.Red,
                     start = Offset(xPos, yTop),
@@ -612,6 +586,8 @@ fun GrowthChart(
                 )
                 
                 // Draw red dot at intersection with main plot line
+                // Y position: bottom of chart - (ratio * chart height)
+                // This maps yRatio (0 = min value at bottom, 1 = max value at top) to screen coordinates
                 val yRatio = tooltipData!!.interpolatedY!!
                 val yPos = yBottom - (chartHeight * yRatio.toFloat())
                 drawCircle(
