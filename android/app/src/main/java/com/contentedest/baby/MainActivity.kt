@@ -210,7 +210,10 @@ class MainActivity : ComponentActivity() {
                                 NavigationRailItem(
                                     selected = selectedTab == 1,
                                     onClick = { selectedTab = 1 },
-                                    icon = { Icon(Icons.Filled.TrendingUp, contentDescription = "Growth") },
+                                    icon = { 
+                                        @Suppress("DEPRECATION")
+                                        Icon(Icons.Filled.TrendingUp, contentDescription = "Growth") 
+                                    },
                                     label = { Text("Growth") }
                                 )
                                 NavigationRailItem(
@@ -285,7 +288,10 @@ class MainActivity : ComponentActivity() {
                                             NavigationBarItem(
                                                 selected = selectedTab == 1,
                                                 onClick = { selectedTab = 1 },
-                                                icon = { Icon(Icons.Filled.TrendingUp, contentDescription = "Growth") },
+                                                icon = { 
+                                                    @Suppress("DEPRECATION")
+                                                    Icon(Icons.Filled.TrendingUp, contentDescription = "Growth") 
+                                                },
                                                 label = { Text("Growth") }
                                             )
                                             NavigationBarItem(

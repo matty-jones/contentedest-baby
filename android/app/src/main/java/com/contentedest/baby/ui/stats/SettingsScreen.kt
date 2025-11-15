@@ -43,6 +43,7 @@ fun SettingsScreen(
                 title = { Text("Settings") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
+                        @Suppress("DEPRECATION")
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }

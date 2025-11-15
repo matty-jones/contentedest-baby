@@ -27,6 +27,7 @@ fun StatisticsScreen(
                 title = { Text("Statistics") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
+                        @Suppress("DEPRECATION")
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
