@@ -1,4 +1,11 @@
-#!/bin/sh
+#!/bin/bash
+
+# Ensure PATH includes standard directories for xargs and other utilities
+# This must be the FIRST thing in the script, before any other commands
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
+
+# Clear command hash to ensure fresh lookup
+hash -r 2>/dev/null || true
 
 #
 # Copyright © 2015-2021 the original authors.
@@ -52,9 +59,6 @@
 #       Where the inherited environment variables (DEFAULT_JVM_OPTS, JAVA_OPTS,
 #       and GRADLE_OPTS) rely on word-splitting, this is performed explicitly;
 #       see the in-line comments for details.
-#
-#       There are tweaks for specific operating systems such as AIX, CygWin,
-#       Darwin, MinGW, and NonStop.
 #
 #   (3) This script is generated from the Groovy template
 #       https://github.com/gradle/gradle/blob/HEAD/platforms/jvm/plugins-application/src/main/resources/org/gradle/api/internal/plugins/unixStartScript.txt
@@ -147,15 +151,15 @@ if ! "$cygwin" && ! "$darwin" && ! "$nonstop" ; then
     case $MAX_FD in #(
       max*)
         # In POSIX sh, ulimit -H is undefined. That's why the result is checked to see if it worked.
-        # shellcheck disable=SC2039,SC3045
+        # shellcheck disable=SC3045
         MAX_FD=$( ulimit -H -n ) ||
-            warn "Could not query maximum file descriptor limit"
+            warn "Could not determine maximum file descriptor limit"
     esac
     case $MAX_FD in  #(
       '' | soft) :;; #(
       *)
         # In POSIX sh, ulimit -n is undefined. That's why the result is checked to see if it worked.
-        # shellcheck disable=SC2039,SC3045
+        # shellcheck disable=SC3045
         ulimit -n "$MAX_FD" ||
             warn "Could not set maximum file descriptor limit to $MAX_FD"
     esac
@@ -217,8 +221,7 @@ set -- \
         "$@"
 
 # Stop when "xargs" is not available.
-if ! command -v xargs >/dev/null 2>&1
-then
+if ! command -v xargs >/dev/null 2>&1; then
     die "xargs is not available"
 fi
 
