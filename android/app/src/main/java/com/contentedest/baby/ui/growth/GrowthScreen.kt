@@ -618,8 +618,8 @@ fun GrowthChart(
                 
                 // Account for axis label padding at top and bottom
                 // Vico typically adds ~24-32dp for x-axis labels at bottom and some space at top
-                // Reduced slightly to fix vertical offset (dot was too high)
-                val axisLabelPaddingPx = with(density) { 26.dp.toPx() }
+                // Fine-tuned to align dot with data point
+                val axisLabelPaddingPx = with(density) { 24.dp.toPx() }
                 val chartTop = paddingPx + axisLabelPaddingPx * 0.3f // Small padding at top
                 val chartBottom = size.height - paddingPx - axisLabelPaddingPx // Space for x-axis labels
                 val chartHeight = chartBottom - chartTop
