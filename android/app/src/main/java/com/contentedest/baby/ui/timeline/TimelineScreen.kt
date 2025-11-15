@@ -1402,36 +1402,34 @@ fun EditEventDialog(
                     }
                 }
                 
-                // Event Details Selection (only show if event type is selected)
-                if (selectedEventType != null) {
-                    Text(
-                        text = "Details",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        items(getDetailsForEventType(selectedEventType!!)) { detail ->
-                            FilterChip(
-                                selected = selectedDetails == detail,
-                                onClick = { 
-                                    selectedDetails = detail
-                                    // Set smart duration defaults for nappy events
-                                    if (selectedEventType == EventType.nappy) {
-                                        val (hours, minutes) = getNappyDuration(detail)
-                                        durationHours = hours
-                                        durationMinutes = minutes
-                                    }
-                                },
-                                label = { 
-                                    Text(
-                                        text = detail,
-                                        style = MaterialTheme.typography.bodySmall
-                                    ) 
+                // Event Details Selection
+                Text(
+                    text = "Details",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(getDetailsForEventType(selectedEventType)) { detail ->
+                        FilterChip(
+                            selected = selectedDetails == detail,
+                            onClick = { 
+                                selectedDetails = detail
+                                // Set smart duration defaults for nappy events
+                                if (selectedEventType == EventType.nappy) {
+                                    val (hours, minutes) = getNappyDuration(detail)
+                                    durationHours = hours
+                                    durationMinutes = minutes
                                 }
-                            )
-                        }
+                            },
+                            label = { 
+                                Text(
+                                    text = detail,
+                                    style = MaterialTheme.typography.bodySmall
+                                ) 
+                            }
+                        )
                     }
                 }
                 
@@ -1507,7 +1505,6 @@ fun EditEventDialog(
                                 onEventUpdated()
                             }
                         },
-                        enabled = selectedEventType != null,
                         modifier = Modifier.weight(1f)
                     ) {
                         Text(

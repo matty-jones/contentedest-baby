@@ -105,6 +105,7 @@ fun DailyLogScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = { currentDate = currentDate.minusDays(1) }) {
+                    @Suppress("DEPRECATION")
                     Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = "Previous day")
                 }
 
@@ -114,6 +115,7 @@ fun DailyLogScreen(
                 )
 
                 IconButton(onClick = { currentDate = currentDate.plusDays(1) }) {
+                    @Suppress("DEPRECATION")
                     Icon(Icons.Filled.KeyboardArrowRight, contentDescription = "Next day")
                 }
             }

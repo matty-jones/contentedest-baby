@@ -210,7 +210,7 @@ fun NurseryScreen(streamUrl: String, modifier: Modifier = Modifier) {
                 // Enable JavaScript and DOM storage for WebRTC/HTML5 video
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
-                settings.databaseEnabled = true
+                // databaseEnabled is deprecated and no longer needed
                 
                 // Video playback settings
                 settings.mediaPlaybackRequiresUserGesture = false

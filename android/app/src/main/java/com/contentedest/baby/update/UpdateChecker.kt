@@ -99,10 +99,16 @@ class UpdateChecker @Inject constructor(
                         0
                     )
                     if (packageInfo != null) {
-                        Log.d(TAG, "Downloaded APK version: ${packageInfo.versionName} (${packageInfo.versionCode})")
+                        val downloadedVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            packageInfo.longVersionCode.toInt()
+                        } else {
+                            @Suppress("DEPRECATION")
+                            packageInfo.versionCode
+                        }
+                        Log.d(TAG, "Downloaded APK version: ${packageInfo.versionName} ($downloadedVersionCode)")
                         Log.d(TAG, "Current app version: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
                         
-                        if (packageInfo.versionCode <= BuildConfig.VERSION_CODE) {
+                        if (downloadedVersionCode <= BuildConfig.VERSION_CODE) {
                             Log.w(TAG, "Downloaded APK version is not newer than current version!")
                         }
                     } else {

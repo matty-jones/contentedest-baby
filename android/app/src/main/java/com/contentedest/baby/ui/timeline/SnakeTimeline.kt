@@ -92,7 +92,7 @@ fun SnakeTimeline(
                 val nextY = geom.rowCenters[r + 1]
                 val cpX = if (goingRight) endX + geom.turnRadius else endX - geom.turnRadius
                 val cpY = (y + nextY) / 2f
-                path.quadraticBezierTo(cpX, cpY, endX, nextY)
+                path.quadraticTo(cpX, cpY, endX, nextY)
                 y = nextY
                 goingRight = !goingRight
                 path.lineTo(if (goingRight) geom.innerLeft else geom.innerRight, y)
@@ -199,7 +199,7 @@ fun SnakeTimeline(
             // Draw quadratic curve to match the snake path
             val p = Path().apply {
                 moveTo(c.start.x, c.start.y)
-                quadraticBezierTo(c.cp.x, c.cp.y, c.end.x, c.end.y)
+                quadraticTo(c.cp.x, c.cp.y, c.end.x, c.end.y)
             }
             drawPath(
                 path = p,

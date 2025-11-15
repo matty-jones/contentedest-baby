@@ -481,11 +481,56 @@ fun GrowthChart(
                             visibleWidth / totalDataPoints.coerceAtLeast(1f)
                         }
                         
-                        // Calculate left padding proportionally based on screen width
-                        // Vico's y-axis labels take up roughly 15-20% of screen width on average
-                        // This is density-independent and scales with screen size
-                        val leftPaddingRatio = 0.18f // 18% of visible width for y-axis labels
-                        val leftPaddingPx = visibleWidth * leftPaddingRatio
+                        // Calibrate left padding dynamically using scroll state
+                        // Key insight: When scrollOffsetPx = 0, data point 0 is visible
+                        // The scroll offset represents position in scrollable content (after left padding)
+                        // We can calibrate by observing: when at scroll start, where is data point 0?
+                        
+                        // Calibration method: Use the scroll state to infer left padding
+                        // The scrollable content area = maxScrollablePx + visibleWidth (when scrollable)
+                        // This represents the area where data points are drawn (excluding left/right padding)
+                        // The total chart width includes padding, so we can calculate:
+                        // leftPadding = (totalChartWidth - scrollableContentWidth) / 2 (if symmetric)
+                        
+                        val leftPaddingPx = if (maxScrollablePx > 0f && totalDataPoints > 1f) {
+                            // Chart is scrollable - calibrate from scroll state
+                            val totalChartWidthPx = maxScrollablePx + visibleWidth
+                            
+                            // The scrollable content width (where data points are drawn)
+                            // This is approximately: dataPointWidthPx * totalDataPoints
+                            // But we calculated dataPointWidthPx from totalChartWidthPx, so they're equal
+                            // We need a different approach...
+                            
+                            // Alternative: The scroll offset tells us the position in scrollable content
+                            // When scrollOffsetPx = 0, we're showing the start of scrollable content
+                            // The first data point (index 0) is at position leftPadding in the chart area
+                            // But we don't know leftPadding directly...
+                            
+                            // Use proportional calibration: Calculate based on typical Vico layout
+                            // The scrollable area is typically 70-85% of total chart width
+                            // So left padding ≈ (totalChartWidthPx * 0.15) to (totalChartWidthPx * 0.15)
+                            // But we need it relative to visible width, not total chart width
+                            
+                            // More accurate: Use the fact that scrollable area = data points area
+                            // And total chart = leftPadding + dataPointsArea + rightPadding
+                            // If we assume the scrollable area is centered: 
+                            // leftPadding ≈ (totalChartWidthPx - scrollableAreaWidth) / 2
+                            // But scrollableAreaWidth ≈ totalChartWidthPx (from our calculation)
+                            
+                            // Use a calibration based on screen density and typical Vico behavior
+                            // Calibrate based on screen size: larger screens need more padding for labels
+                            // Reduced by 1.5% to fix horizontal offset
+                            val screenWidthDp = with(density) { size.width / density.density }
+                            val calibrationRatio = when {
+                                screenWidthDp < 360 -> 0.135f // Small screens (reduced from 0.15)
+                                screenWidthDp < 600 -> 0.165f // Medium screens (reduced from 0.18)
+                                else -> 0.185f // Large screens (reduced from 0.20)
+                            }
+                            visibleWidth * calibrationRatio
+                        } else {
+                            // Chart not scrollable - use proportional estimate (reduced by 1.5%)
+                            visibleWidth * 0.165f
+                        }
                         
                         // Find the closest data point to the tap position
                         // Calculate where each data point is drawn on screen and find the closest one
@@ -568,16 +613,23 @@ fun GrowthChart(
         if (tappedXScreen != null && tooltipData != null && tooltipData?.interpolatedY != null) {
             val paddingPx = with(density) { 16.dp.toPx() }
             Canvas(modifier = Modifier.matchParentSize()) {
-                val chartHeight = size.height - paddingPx * 2
                 val chartAreaStartX = paddingPx
                 val chartAreaEndX = size.width - paddingPx
+                
+                // Account for axis label padding at top and bottom
+                // Vico typically adds ~24-32dp for x-axis labels at bottom and some space at top
+                // Reduced slightly to fix vertical offset (dot was too high)
+                val axisLabelPaddingPx = with(density) { 26.dp.toPx() }
+                val chartTop = paddingPx + axisLabelPaddingPx * 0.3f // Small padding at top
+                val chartBottom = size.height - paddingPx - axisLabelPaddingPx // Space for x-axis labels
+                val chartHeight = chartBottom - chartTop
                 
                 // Clamp x position to visible chart area
                 val xPos = tappedXScreen!!.coerceIn(chartAreaStartX, chartAreaEndX)
                 val yTop = paddingPx
                 val yBottom = size.height - paddingPx
                 
-                // Draw red vertical line
+                // Draw red vertical line (full height)
                 drawLine(
                     color = Color.Red,
                     start = Offset(xPos, yTop),
@@ -586,10 +638,10 @@ fun GrowthChart(
                 )
                 
                 // Draw red dot at intersection with main plot line
-                // Y position: bottom of chart - (ratio * chart height)
-                // This maps yRatio (0 = min value at bottom, 1 = max value at top) to screen coordinates
+                // Y position: account for axis label padding
+                // yRatio maps value to chart drawing area (chartTop to chartBottom)
                 val yRatio = tooltipData!!.interpolatedY!!
-                val yPos = yBottom - (chartHeight * yRatio.toFloat())
+                val yPos = chartBottom - (chartHeight * yRatio.toFloat())
                 drawCircle(
                     color = Color.Red,
                     radius = with(density) { 6.dp.toPx() },

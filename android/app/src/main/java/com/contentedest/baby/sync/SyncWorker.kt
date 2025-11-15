@@ -62,18 +62,14 @@ class SyncWorker(
 
             return@coroutineScope when (pullResult) {
                 is com.contentedest.baby.data.repo.Result.Success -> {
-                    val successData = pullResult.data
-                    if (successData is Pair<*, *>) {
-                        val newClock = successData.first as Long
-                        val events = successData.second as List<EventDto>
-                        if (events.isNotEmpty()) {
-                            eventRepository.saveServerEvents(events)
-                            android.util.Log.d("SyncWorker", "Saved ${events.size} events to local database")
-                            eventRepository.updateServerClock(newClock)
-                            android.util.Log.d("SyncWorker", "Updated server clock to: $newClock")
-                        } else {
-                            android.util.Log.d("SyncWorker", "No new events to sync")
-                        }
+                    val (newClock, events) = pullResult.data
+                    if (events.isNotEmpty()) {
+                        eventRepository.saveServerEvents(events)
+                        android.util.Log.d("SyncWorker", "Saved ${events.size} events to local database")
+                        eventRepository.updateServerClock(newClock)
+                        android.util.Log.d("SyncWorker", "Updated server clock to: $newClock")
+                    } else {
+                        android.util.Log.d("SyncWorker", "No new events to sync")
                     }
                     
                     // Handle growth data sync result

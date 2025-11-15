@@ -33,6 +33,7 @@ fun ExportScreen(
                 title = { Text("Export Data") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
+                        @Suppress("DEPRECATION")
                         Icon(
                             imageVector = Icons.Filled.ArrowBack,
                             contentDescription = "Back"
