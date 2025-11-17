@@ -16,6 +16,7 @@ import com.patrykandpatrick.vico.compose.cartesian.axis.*
 import com.patrykandpatrick.vico.compose.cartesian.layer.*
 import com.patrykandpatrick.vico.compose.m3.*
 import com.patrykandpatrick.vico.compose.common.component.rememberTextComponent
+import com.patrykandpatrick.vico.core.common.Fill
 import androidx.compose.ui.unit.sp
 import com.patrykandpatrick.vico.core.cartesian.axis.HorizontalAxis
 import com.patrykandpatrick.vico.core.cartesian.axis.VerticalAxis
@@ -306,6 +307,36 @@ fun GrowthChart(
         }
     }
     
+    // Create darker variants of the main color for percentile lines (consistent color scheme)
+    // Darken the color by reducing RGB values proportionally
+    val darkerColor1 = remember(lineColor) {
+        // For median: darker but still visible
+        Color(
+            red = (lineColor.red * 0.5f).coerceIn(0f, 1f),
+            green = (lineColor.green * 0.5f).coerceIn(0f, 1f),
+            blue = (lineColor.blue * 0.5f).coerceIn(0f, 1f),
+            alpha = 0.6f
+        )
+    }
+    val darkerColor2 = remember(lineColor) {
+        // For 25th/75th: even darker
+        Color(
+            red = (lineColor.red * 0.4f).coerceIn(0f, 1f),
+            green = (lineColor.green * 0.4f).coerceIn(0f, 1f),
+            blue = (lineColor.blue * 0.4f).coerceIn(0f, 1f),
+            alpha = 0.4f
+        )
+    }
+    val darkerColor3 = remember(lineColor) {
+        // For 5th/95th: darkest
+        Color(
+            red = (lineColor.red * 0.3f).coerceIn(0f, 1f),
+            green = (lineColor.green * 0.3f).coerceIn(0f, 1f),
+            blue = (lineColor.blue * 0.3f).coerceIn(0f, 1f),
+            alpha = 0.25f
+        )
+    }
+    
     val density = LocalDensity.current
 
     // Create axes using Vico 2.1.4 API companion object functions with white axis labels
@@ -343,10 +374,44 @@ fun GrowthChart(
         itemPlacer = remember { HorizontalAxis.ItemPlacer.aligned(spacing = { 2 }) }
     )
 
+    // Create line styles with different colors, thicknesses, and styles
+    // Main line: thick, bright color
+    val mainLine = LineCartesianLayer.rememberLine(
+        fill = LineCartesianLayer.LineFill.single(Fill(lineColor.toArgb())),
+        stroke = LineCartesianLayer.LineStroke.Continuous(
+            thicknessDp = 3f
+        )
+    )
+    
+    // Median (50th): thinner, dotted, darker color
+    val medianLine = LineCartesianLayer.rememberLine(
+        fill = LineCartesianLayer.LineFill.single(Fill(darkerColor1.toArgb())),
+        stroke = LineCartesianLayer.LineStroke.Dashed(
+            thicknessDp = 2f,
+            dashLengthDp = 8f,
+            gapLengthDp = 4f
+        )
+    )
+    
+    // 25th/75th: thinner, solid, even darker
+    val quartileLine = LineCartesianLayer.rememberLine(
+        fill = LineCartesianLayer.LineFill.single(Fill(darkerColor2.toArgb())),
+        stroke = LineCartesianLayer.LineStroke.Continuous(
+            thicknessDp = 1.5f
+        )
+    )
+    
+    // 5th/95th: thinnest, solid, darkest
+    val extremeLine = LineCartesianLayer.rememberLine(
+        fill = LineCartesianLayer.LineFill.single(Fill(darkerColor3.toArgb())),
+        stroke = LineCartesianLayer.LineStroke.Continuous(
+            thicknessDp = 1f
+        )
+    )
+
     // Create main data line layer with custom Y-axis range (no forced zero) - Vico 2.1.4 API
-    // TODO: Add line component styling with reduced opacity for percentile lines
-    // Vico 2.1.4 API for setting line colors/opacity per layer needs to be determined
     val mainLineLayer = rememberLineCartesianLayer(
+        lineProvider = LineCartesianLayer.LineProvider.series(listOf(mainLine)),
         rangeProvider = CartesianLayerRangeProvider.fixed(
             minY = yAxisMin,
             maxY = yAxisMax
@@ -356,30 +421,35 @@ fun GrowthChart(
     // Create percentile line layers (only for weight and height)
     // Percentiles: 5th, 25th, 50th, 75th, 95th
     val percentile50Layer = rememberLineCartesianLayer(
+        lineProvider = LineCartesianLayer.LineProvider.series(listOf(medianLine)),
         rangeProvider = CartesianLayerRangeProvider.fixed(
             minY = yAxisMin,
             maxY = yAxisMax
         )
     )
     val percentile25Layer = rememberLineCartesianLayer(
+        lineProvider = LineCartesianLayer.LineProvider.series(listOf(quartileLine)),
         rangeProvider = CartesianLayerRangeProvider.fixed(
             minY = yAxisMin,
             maxY = yAxisMax
         )
     )
     val percentile75Layer = rememberLineCartesianLayer(
+        lineProvider = LineCartesianLayer.LineProvider.series(listOf(quartileLine)),
         rangeProvider = CartesianLayerRangeProvider.fixed(
             minY = yAxisMin,
             maxY = yAxisMax
         )
     )
     val percentile5Layer = rememberLineCartesianLayer(
+        lineProvider = LineCartesianLayer.LineProvider.series(listOf(extremeLine)),
         rangeProvider = CartesianLayerRangeProvider.fixed(
             minY = yAxisMin,
             maxY = yAxisMax
         )
     )
     val percentile95Layer = rememberLineCartesianLayer(
+        lineProvider = LineCartesianLayer.LineProvider.series(listOf(extremeLine)),
         rangeProvider = CartesianLayerRangeProvider.fixed(
             minY = yAxisMin,
             maxY = yAxisMax
@@ -387,19 +457,30 @@ fun GrowthChart(
     )
 
     // Combine all layers: main line first, then percentile lines
+    // Only include layers for percentiles that have data
     val allLayers = remember(percentileData) {
         if (percentileData == null) {
             listOf(mainLineLayer)
         } else {
+            val layers = mutableListOf<LineCartesianLayer>(mainLineLayer)
             // Order: main, 50th, 25th, 75th, 5th, 95th
-            listOf(
-                mainLineLayer,
-                percentile50Layer,
-                percentile25Layer,
-                percentile75Layer,
-                percentile5Layer,
-                percentile95Layer
-            )
+            // Only add layers for percentiles that have data
+            if (percentileData[2].isNotEmpty()) { // 50th
+                layers.add(percentile50Layer)
+            }
+            if (percentileData[1].isNotEmpty()) { // 25th
+                layers.add(percentile25Layer)
+            }
+            if (percentileData[3].isNotEmpty()) { // 75th
+                layers.add(percentile75Layer)
+            }
+            if (percentileData[0].isNotEmpty()) { // 5th
+                layers.add(percentile5Layer)
+            }
+            if (percentileData[4].isNotEmpty()) { // 95th
+                layers.add(percentile95Layer)
+            }
+            layers
         }
     }
 
@@ -426,22 +507,27 @@ fun GrowthChart(
         } else {
             // PercentileData is [5th, 25th, 50th, 75th, 95th]
             // Layer order: main, 50th, 25th, 75th, 5th, 95th
-            val percentile50Model = LineCartesianLayerModel(listOf(percentileData[2])) // 50th
-            val percentile25Model = LineCartesianLayerModel(listOf(percentileData[1])) // 25th
-            val percentile75Model = LineCartesianLayerModel(listOf(percentileData[3])) // 75th
-            val percentile5Model = LineCartesianLayerModel(listOf(percentileData[0]))  // 5th
-            val percentile95Model = LineCartesianLayerModel(listOf(percentileData[4]))  // 95th
+            // Only create models for percentiles that have data
+            val models = mutableListOf<CartesianLayerModel>(mainModel)
             
-            CartesianChartModel(
-                models = listOf(
-                    mainModel,
-                    percentile50Model,
-                    percentile25Model,
-                    percentile75Model,
-                    percentile5Model,
-                    percentile95Model
-                )
-            )
+            // Add percentile models only if they have data
+            if (percentileData[2].isNotEmpty()) { // 50th
+                models.add(LineCartesianLayerModel(listOf(percentileData[2])))
+            }
+            if (percentileData[1].isNotEmpty()) { // 25th
+                models.add(LineCartesianLayerModel(listOf(percentileData[1])))
+            }
+            if (percentileData[3].isNotEmpty()) { // 75th
+                models.add(LineCartesianLayerModel(listOf(percentileData[3])))
+            }
+            if (percentileData[0].isNotEmpty()) { // 5th
+                models.add(LineCartesianLayerModel(listOf(percentileData[0])))
+            }
+            if (percentileData[4].isNotEmpty()) { // 95th
+                models.add(LineCartesianLayerModel(listOf(percentileData[4])))
+            }
+            
+            CartesianChartModel(models = models)
         }
     }
 
@@ -451,6 +537,19 @@ fun GrowthChart(
     var tappedX by remember { mutableStateOf<Float?>(null) }
     var tappedXScreen by remember { mutableStateOf<Float?>(null) }
     var tooltipData by remember { mutableStateOf<TooltipData?>(null) }
+
+    // Clear tooltip when chart is scrolled
+    var previousScrollValue by remember { mutableStateOf<Float?>(null) }
+    LaunchedEffect(chartScrollState.value) {
+        val currentScroll = chartScrollState.value
+        // Only clear if scroll actually changed (not on initial composition)
+        if (previousScrollValue != null && previousScrollValue != currentScroll && tooltipData != null) {
+            tappedX = null
+            tappedXScreen = null
+            tooltipData = null
+        }
+        previousScrollValue = currentScroll
+    }
 
     // Use Vico 2.1.4 API with axes now visible
     Box(modifier = modifier) {
@@ -474,9 +573,13 @@ fun GrowthChart(
                         val totalDataPoints = data.size.toFloat()
                         
                         // Calculate data point width from scroll state (proportional to screen size)
+                        // Add small adjustment to account for right-side offset (width slightly too short)
                         val dataPointWidthPx = if (maxScrollablePx > 0f && totalDataPoints > 1f) {
                             val totalChartWidthPx = maxScrollablePx + visibleWidth
-                            totalChartWidthPx / totalDataPoints
+                            // Add small adjustment factor to account for slight width discrepancy
+                            // This ensures right-side alignment matches left-side
+                            val adjustmentFactor = 1.002f // ~0.2% increase to fix right-side offset
+                            (totalChartWidthPx * adjustmentFactor) / totalDataPoints
                         } else {
                             visibleWidth / totalDataPoints.coerceAtLeast(1f)
                         }
@@ -619,7 +722,7 @@ fun GrowthChart(
                 // Account for axis label padding at top and bottom
                 // Vico typically adds ~24-32dp for x-axis labels at bottom and some space at top
                 // Fine-tuned to align dot with data point
-                val axisLabelPaddingPx = with(density) { 24.dp.toPx() }
+                val axisLabelPaddingPx = with(density) { 22.dp.toPx() }
                 val chartTop = paddingPx + axisLabelPaddingPx * 0.3f // Small padding at top
                 val chartBottom = size.height - paddingPx - axisLabelPaddingPx // Space for x-axis labels
                 val chartHeight = chartBottom - chartTop
