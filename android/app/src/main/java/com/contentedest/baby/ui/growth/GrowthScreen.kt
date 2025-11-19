@@ -307,33 +307,33 @@ fun GrowthChart(
         }
     }
     
-    // Create darker variants of the main color for percentile lines (consistent color scheme)
-    // Darken the color by reducing RGB values proportionally
+    // Create lighter variants of the main color for percentile lines (consistent color scheme)
+    // Lighten the color by reducing RGB values less aggressively and increasing alpha
     val darkerColor1 = remember(lineColor) {
-        // For median: darker but still visible
+        // For median: lighter and more visible
+        Color(
+            red = (lineColor.red * 0.7f).coerceIn(0f, 1f),
+            green = (lineColor.green * 0.7f).coerceIn(0f, 1f),
+            blue = (lineColor.blue * 0.7f).coerceIn(0f, 1f),
+            alpha = 0.75f
+        )
+    }
+    val darkerColor2 = remember(lineColor) {
+        // For 25th/75th: lighter and more visible
+        Color(
+            red = (lineColor.red * 0.6f).coerceIn(0f, 1f),
+            green = (lineColor.green * 0.6f).coerceIn(0f, 1f),
+            blue = (lineColor.blue * 0.6f).coerceIn(0f, 1f),
+            alpha = 0.65f
+        )
+    }
+    val darkerColor3 = remember(lineColor) {
+        // For 5th/95th: lighter and more visible
         Color(
             red = (lineColor.red * 0.5f).coerceIn(0f, 1f),
             green = (lineColor.green * 0.5f).coerceIn(0f, 1f),
             blue = (lineColor.blue * 0.5f).coerceIn(0f, 1f),
-            alpha = 0.6f
-        )
-    }
-    val darkerColor2 = remember(lineColor) {
-        // For 25th/75th: even darker
-        Color(
-            red = (lineColor.red * 0.4f).coerceIn(0f, 1f),
-            green = (lineColor.green * 0.4f).coerceIn(0f, 1f),
-            blue = (lineColor.blue * 0.4f).coerceIn(0f, 1f),
-            alpha = 0.4f
-        )
-    }
-    val darkerColor3 = remember(lineColor) {
-        // For 5th/95th: darkest
-        Color(
-            red = (lineColor.red * 0.3f).coerceIn(0f, 1f),
-            green = (lineColor.green * 0.3f).coerceIn(0f, 1f),
-            blue = (lineColor.blue * 0.3f).coerceIn(0f, 1f),
-            alpha = 0.25f
+            alpha = 0.55f
         )
     }
     
@@ -662,15 +662,18 @@ fun GrowthChart(
                         val selectedDataPoint = data[closestIndex]
                         val ageMonths = calculateAgeMonths(firstTs, selectedDataPoint.ts)
                         
-                        // Calculate percentile values for this data point (no interpolation)
-                        val percentileValues = if (percentileData != null) {
-                            mapOf(
-                                5.0 to percentileData[0].getOrNull(closestIndex)?.y?.toDouble(),
-                                25.0 to percentileData[1].getOrNull(closestIndex)?.y?.toDouble(),
-                                50.0 to percentileData[2].getOrNull(closestIndex)?.y?.toDouble(),
-                                75.0 to percentileData[3].getOrNull(closestIndex)?.y?.toDouble(),
-                                95.0 to percentileData[4].getOrNull(closestIndex)?.y?.toDouble()
-                            ).filterValues { it != null }.mapValues { it.value!! }
+                        // Calculate percentile values for this data point by recalculating them
+                        // This ensures they match the calculated percentile and use the correct age
+                        val percentileValues = if (category == GrowthCategory.weight || category == GrowthCategory.height) {
+                            val percentiles = listOf(5.0, 25.0, 50.0, 75.0, 95.0)
+                            percentiles.associateWith { targetPercentile ->
+                                GrowthPercentileCalculator.calculatePercentileValue(
+                                    percentile = targetPercentile,
+                                    ageMonths = ageMonths,
+                                    category = category,
+                                    unit = unit
+                                )
+                            }.filterValues { it != null }.mapValues { it.value!! }
                         } else {
                             emptyMap()
                         }
@@ -813,7 +816,8 @@ fun GrowthChartTooltip(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                data.interpolatedPercentileValues.forEach { (percentile, value) ->
+                // Display percentiles in sorted order (5th, 25th, 50th, 75th, 95th)
+                data.interpolatedPercentileValues.toList().sortedBy { it.first }.forEach { (percentile, value) ->
                     if (value != null) {
                         Text(
                             text = "  ${percentile.toInt()}th: ${formatValue(value, data.unit)}",

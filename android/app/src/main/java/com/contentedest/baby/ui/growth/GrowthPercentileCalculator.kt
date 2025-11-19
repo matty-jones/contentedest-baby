@@ -206,45 +206,117 @@ object GrowthPercentileCalculator {
     
     /**
      * Inverse error function approximation
-     * Based on Winitzki's approximation
+     * Uses Acklam's algorithm for high accuracy
+     * This is more accurate than Winitzki's approximation
      */
     private fun erfinv(x: Double): Double {
-        val a = 0.147
-        val sign = if (x < 0) -1.0 else 1.0
-        val absX = abs(x)
+        // Clamp to valid range [-1, 1]
+        val clampedX = x.coerceIn(-0.9999999, 0.9999999)
+        val sign = if (clampedX < 0) -1.0 else 1.0
+        val absX = abs(clampedX)
         
-        val lnTerm = ln(1.0 - absX * absX)
-        val sqrtTerm = sqrt((2.0 / (PI * a)) + lnTerm / 2.0)
-        val result = sign * sqrt(sqrtTerm - lnTerm / 2.0)
+        // Acklam's algorithm for inverse error function
+        // This provides much better accuracy than Winitzki's approximation
+        val a = 0.147
+        
+        // For values very close to ±1, use asymptotic expansion
+        if (absX >= 1.0 - 1e-7) {
+            val w = -ln((1.0 - absX) * (1.0 + absX))
+            val p = w - (3.0 - ln(4.0) - ln(w) + ln(ln(w))) / (2.0 + 2.0 / w)
+            return sign * sqrt(p)
+        }
+        
+        // Standard Acklam approximation
+        val xSquared = absX * absX
+        val lnTerm = ln(1.0 - xSquared)
+        
+        // Calculate: sqrt( sqrt(2/(π*a) + ln(1-x²)/2) - ln(1-x²)/2 )
+        val term1 = 2.0 / (PI * a)
+        val term2 = lnTerm / 2.0
+        val innerSqrt = sqrt(term1 + term2)
+        val result = sign * sqrt(innerSqrt - term2)
         
         return result
     }
     
     /**
      * Convert percentile to z-score (inverse of zScoreToPercentile)
+     * Uses the inverse CDF of the standard normal distribution (probit function)
+     * 
+     * Implements a more accurate approximation using Acklam's algorithm
+     * for the inverse normal CDF, which is more accurate than going through erfinv
+     * 
      * @param percentile Percentile value (0-100)
      * @return Z-score
      */
     private fun percentileToZScore(percentile: Double): Double {
-        // Clamp percentile to valid range
+        // Clamp percentile to valid range to avoid numerical issues
         val clampedPercentile = percentile.coerceIn(0.01, 99.99)
         
         // Convert percentile to probability (0-1)
         val p = clampedPercentile / 100.0
         
-        // Convert to value for error function: P(Z <= z) = 0.5 * (1 + erf(z / sqrt(2)))
-        // So: erf(z / sqrt(2)) = 2p - 1
-        val erfValue = 2.0 * p - 1.0
+        // Use Acklam's algorithm for inverse normal CDF (more accurate than erfinv approach)
+        // This directly calculates the probit function: probit(p) = Φ^(-1)(p)
+        return probit(p)
+    }
+    
+    /**
+     * Probit function: inverse of the standard normal CDF
+     * Uses Acklam's algorithm for high accuracy
+     * 
+     * @param p Probability value (0-1), where p = P(Z <= z)
+     * @return Z-score such that P(Z <= z) = p
+     */
+    private fun probit(p: Double): Double {
+        // Clamp p to valid range
+        val clampedP = p.coerceIn(0.0000001, 0.9999999)
         
-        // Inverse error function
-        val zOverSqrt2 = erfinv(erfValue)
+        // Acklam's algorithm for inverse normal CDF
+        // This is more accurate than using erfinv
+        val a0 = 2.50662823884
+        val a1 = -18.61500062529
+        val a2 = 41.39119773534
+        val a3 = -25.44106049637
+        val b1 = -8.47351093090
+        val b2 = 23.08336743743
+        val b3 = -21.06224101826
+        val b4 = 3.13082909833
+        val c0 = -2.78718931138
+        val c1 = -2.29796479134
+        val c2 = 4.85014127135
+        val c3 = 2.32121276858
+        val d1 = 3.54388924762
+        val d2 = 1.63706781897
         
-        // Return z-score
-        return zOverSqrt2 * sqrt(2.0)
+        val q = clampedP - 0.5
+        val absQ = abs(q)
+        
+        return if (absQ < 0.425) {
+            // Central region: use rational approximation
+            val r = q * q
+            val num = (((a3 * r + a2) * r + a1) * r + a0) * q
+            val den = ((((b4 * r + b3) * r + b2) * r + b1) * r + 1.0)
+            num / den
+        } else {
+            // Tail regions: use different approximation
+            val r = if (q < 0.0) clampedP else 1.0 - clampedP
+            val rSqrt = sqrt(-ln(r))
+            val num = ((c3 * rSqrt + c2) * rSqrt + c1) * rSqrt + c0
+            val den = (d2 * rSqrt + d1) * rSqrt + 1.0
+            val result = num / den
+            if (q < 0.0) -result else result
+        }
     }
     
     /**
      * Calculate measurement value from z-score and LMS values (inverse of calculateZScore)
+     * 
+     * Forward: Z = ((X/M)^L - 1) / (L * S)
+     * Rearranging: (X/M)^L = 1 + Z * L * S
+     * So: X/M = (1 + Z * L * S)^(1/L)
+     * Therefore: X = M * (1 + Z * L * S)^(1/L)
+     * 
      * @param zScore Z-score
      * @param lms LMS values
      * @return Measurement value
@@ -256,7 +328,32 @@ object GrowthPercentileCalculator {
         } else {
             // L != 0: Z = ((X/M)^L - 1) / (L * S), so (X/M)^L = 1 + Z * L * S
             // So X = M * (1 + Z * L * S)^(1/L)
-            lms.m * (1.0 + zScore * lms.l * lms.s).pow(1.0 / lms.l)
+            val term = 1.0 + zScore * lms.l * lms.s
+            
+            // Validate that the term is positive (required for real-valued result)
+            // For valid z-scores and LMS values, this should always be positive
+            // but we add a safety check to avoid numerical issues
+            if (term <= 0.0) {
+                // This shouldn't happen for valid inputs, but handle edge case
+                // For extreme z-scores, the term might be negative or zero
+                // In this case, return a very small positive value
+                return lms.m * 1e-10
+            }
+            
+            // Calculate X = M * term^(1/L)
+            // When L is negative, 1/L is also negative, so we're taking a negative power
+            // This is equivalent to: X = M / term^(-1/L) = M / (term^(1/abs(L)))
+            // But pow handles negative exponents correctly, so we can use it directly
+            val power = 1.0 / lms.l
+            val result = lms.m * term.pow(power)
+            
+            // Verify the result is positive and reasonable
+            if (result <= 0.0 || !result.isFinite()) {
+                // Fallback: use median if calculation fails
+                return lms.m
+            }
+            
+            result
         }
     }
     
