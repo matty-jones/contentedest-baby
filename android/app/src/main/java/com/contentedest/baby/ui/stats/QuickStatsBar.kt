@@ -23,6 +23,7 @@ import java.time.ZoneId
 @Composable
 fun QuickStatsBar(
     eventRepository: EventRepository,
+    currentDate: LocalDate,
     onEventTypeClick: ((EventType) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -30,7 +31,7 @@ fun QuickStatsBar(
     var lastSleep by remember { mutableStateOf<EventEntity?>(null) }
     var lastFeed by remember { mutableStateOf<EventEntity?>(null) }
     var lastNappy by remember { mutableStateOf<EventEntity?>(null) }
-    var todayEvents by remember { mutableStateOf<List<EventEntity>>(emptyList()) }
+    var dayEvents by remember { mutableStateOf<List<EventEntity>>(emptyList()) }
     var refreshTrigger by remember { mutableStateOf(0) }
 
     // Event colors matching timeline
@@ -40,18 +41,16 @@ fun QuickStatsBar(
         EventType.nappy to Color(0xFF98FB98) // Pale green
     )
 
-    // Calculate today's start and end timestamps
-    val today = LocalDate.now()
-    val dayStart = today.atStartOfDay(ZoneId.systemDefault()).toEpochSecond()
-    val dayEnd = today.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toEpochSecond()
-
-    // Load last events and today's events
-    LaunchedEffect(Unit) {
+    // Load last events and the selected day's events when date changes
+    LaunchedEffect(currentDate) {
         scope.launch {
             lastSleep = eventRepository.getLastSleepEvent()
             lastFeed = eventRepository.getLastFeedEvent()
             lastNappy = eventRepository.getLastNappyEvent()
-            todayEvents = eventRepository.eventsForDay(dayStart, dayEnd)
+            // Recalculate day boundaries for the new date
+            val newDayStart = currentDate.atTime(7, 0).atZone(ZoneId.systemDefault()).toEpochSecond()
+            val newDayEnd = currentDate.plusDays(1).atTime(7, 0).atZone(ZoneId.systemDefault()).toEpochSecond()
+            dayEvents = eventRepository.eventsForDay(newDayStart, newDayEnd)
         }
     }
 
@@ -63,7 +62,10 @@ fun QuickStatsBar(
                 lastSleep = eventRepository.getLastSleepEvent()
                 lastFeed = eventRepository.getLastFeedEvent()
                 lastNappy = eventRepository.getLastNappyEvent()
-                todayEvents = eventRepository.eventsForDay(dayStart, dayEnd)
+                // Use current date at refresh time
+                val refreshDayStart = currentDate.atTime(7, 0).atZone(ZoneId.systemDefault()).toEpochSecond()
+                val refreshDayEnd = currentDate.plusDays(1).atTime(7, 0).atZone(ZoneId.systemDefault()).toEpochSecond()
+                dayEvents = eventRepository.eventsForDay(refreshDayStart, refreshDayEnd)
             }
         }
     }
@@ -76,21 +78,29 @@ fun QuickStatsBar(
         }
     }
 
-    // Calculate today's totals
-    val todaySleepTotal = remember(todayEvents, refreshTrigger) {
-        todayEvents
+    // Calculate the selected day's totals
+    val daySleepTotal = remember(dayEvents, refreshTrigger) {
+        dayEvents
             .filter { it.type == EventType.sleep && it.start_ts != null && it.end_ts != null }
             .sumOf { (it.end_ts ?: 0) - (it.start_ts ?: 0) }
     }
     
-    val todayFeedTotal = remember(todayEvents, refreshTrigger) {
-        todayEvents
+    val dayFeedTotal = remember(dayEvents, refreshTrigger) {
+        dayEvents
             .filter { it.type == EventType.feed && it.start_ts != null && it.end_ts != null }
             .sumOf { (it.end_ts ?: 0) - (it.start_ts ?: 0) }
     }
     
-    val todayNappyCount = remember(todayEvents) {
-        todayEvents.count { it.type == EventType.nappy }
+    val dayNappyCount = remember(dayEvents) {
+        dayEvents.count { it.type == EventType.nappy }
+    }
+
+    // Determine label text: "Today" if currentDate is today, otherwise show date
+    val today = LocalDate.now()
+    val labelText = if (currentDate == today) {
+        "Today"
+    } else {
+        formatDateShort(currentDate)
     }
 
     Column(
@@ -188,15 +198,15 @@ fun QuickStatsBar(
         
         Spacer(modifier = Modifier.height(2.dp))
         
-        // Today row: Today | total | total | count
+        // Today row: Today/Date | total | total | count
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // "Today" label
+            // Label (shows "Today" or date)
             Text(
-                text = "Today",
+                text = labelText,
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -205,7 +215,7 @@ fun QuickStatsBar(
             
             // Sleep total
             Text(
-                text = formatDurationShort(todaySleepTotal),
+                text = formatDurationShort(daySleepTotal),
                 fontSize = 9.sp,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f)
@@ -213,7 +223,7 @@ fun QuickStatsBar(
             
             // Feed total
             Text(
-                text = formatDurationShort(todayFeedTotal),
+                text = formatDurationShort(dayFeedTotal),
                 fontSize = 9.sp,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f)
@@ -221,7 +231,7 @@ fun QuickStatsBar(
             
             // Diaper count
             Text(
-                text = if (todayNappyCount > 0) "$todayNappyCount" else "0",
+                text = if (dayNappyCount > 0) "$dayNappyCount" else "0",
                 fontSize = 9.sp,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f)
@@ -322,5 +332,13 @@ private fun formatDurationShort(seconds: Long): String {
         minutes > 0 -> "${minutes}m"
         else -> "${seconds}s"
     }
+}
+
+private fun formatDateShort(date: LocalDate): String {
+    val dayOfWeek = date.dayOfWeek.toString().lowercase().replaceFirstChar { it.uppercase() }
+    val day = date.dayOfMonth
+    val month = date.month.toString().lowercase().replaceFirstChar { it.uppercase() }
+    // Short format: "Mon, 1st Jan" -> "Mon 1"
+    return "$dayOfWeek $day"
 }
 

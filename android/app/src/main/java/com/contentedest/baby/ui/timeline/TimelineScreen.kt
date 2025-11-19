@@ -90,17 +90,17 @@ fun TimelineScreen(
     eventRepository: EventRepository,
     deviceId: String,
     date: LocalDate,
+    onDateChanged: (LocalDate) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val events by vm.events.collectAsState()
-    var currentDate by remember { mutableStateOf(date) }
     val timerStateStorage = remember { TimerStateStorage(context) }
 
     // Load events when date changes
-    LaunchedEffect(currentDate) {
-        vm.load(currentDate)
+    LaunchedEffect(date) {
+        vm.load(date)
     }
 
     // UI State for details dialog
@@ -171,16 +171,16 @@ fun TimelineScreen(
         ) {
             Text(
                 text = "<",
-                modifier = Modifier.clickable { currentDate = currentDate.minusDays(1) },
+                modifier = Modifier.clickable { onDateChanged(date.minusDays(1)) },
                 style = MaterialTheme.typography.titleLarge
             )
             Text(
-                text = formatDate(currentDate),
+                text = formatDate(date),
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
             )
             Text(
                 text = ">",
-                modifier = Modifier.clickable { currentDate = currentDate.plusDays(1) },
+                modifier = Modifier.clickable { onDateChanged(date.plusDays(1)) },
                 style = MaterialTheme.typography.titleLarge
             )
         }
@@ -194,7 +194,7 @@ fun TimelineScreen(
         ) {
             SnakeTimeline(
                 events = events,
-                currentDate = currentDate,
+                currentDate = date,
                 eventColors = eventColors,
                 onEventClick = { selectedEvent = it },
                 onTimeClick = { time ->
@@ -256,7 +256,7 @@ fun TimelineScreen(
             if (showEditDialog) {
                 EditEventDialog(
                     event = selectedEvent!!,
-                    currentDate = currentDate,
+                    currentDate = date,
                     eventRepository = eventRepository,
                     deviceId = deviceId,
                     onDismiss = { showEditDialog = false },
@@ -265,7 +265,7 @@ fun TimelineScreen(
                         selectedEvent = null
                         // Reload events and trigger sync
                         scope.launch {
-                            vm.load(currentDate)
+                            vm.load(date)
                             // Trigger immediate sync to push the updated event to server
                             SyncWorker.triggerImmediateSync(context, deviceId)
                         }
@@ -278,7 +278,7 @@ fun TimelineScreen(
         if (showAddEventDialog && selectedTime != null) {
             AddEventDialog(
                 initialTime = selectedTime!!,
-                currentDate = currentDate,
+                currentDate = date,
                 eventRepository = eventRepository,
                 deviceId = deviceId,
                 onDismiss = { 
@@ -290,7 +290,7 @@ fun TimelineScreen(
                     selectedTime = null
                     // Reload events and trigger sync
                     scope.launch {
-                        vm.load(currentDate)
+                        vm.load(date)
                         // Trigger immediate sync to push the new event to server
                         SyncWorker.triggerImmediateSync(context, deviceId)
                     }
@@ -328,7 +328,7 @@ fun TimelineScreen(
                     showLiveCancelConfirmation = true
                 },
                 onSaved = { 
-                    scope.launch { vm.load(currentDate) }
+                    scope.launch { vm.load(date) }
                     activeLiveType = null
                     savedLiveSleepState = null // Clear saved state after successful save
                 }
@@ -344,7 +344,7 @@ fun TimelineScreen(
                     showLiveCancelConfirmation = true
                 },
                 onSaved = { 
-                    scope.launch { vm.load(currentDate) }
+                    scope.launch { vm.load(date) }
                     activeLiveType = null
                     savedLiveFeedState = null // Clear saved state after successful save
                 }
@@ -360,7 +360,7 @@ fun TimelineScreen(
                     showLiveCancelConfirmation = true
                 },
                 onSaved = { 
-                    scope.launch { vm.load(currentDate) }
+                    scope.launch { vm.load(date) }
                     activeLiveType = null
                     savedLiveNappyState = null // Clear saved state after successful save
                 }

@@ -101,6 +101,9 @@ class MainActivity : ComponentActivity() {
                     // Simple bottom nav across three tabs - use rememberSaveable to persist across config changes
                     var selectedTab by rememberSaveable { mutableStateOf(0) } // 0: Timeline, 1: Growth, 2: Nursery
                     
+                    // Timeline date state - shared between TimelineScreen and QuickStatsBar
+                    var timelineDate by rememberSaveable { mutableStateOf(LocalDate.now()) }
+                    
                     // Detect orientation
                     val configuration = LocalConfiguration.current
                     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -265,6 +268,7 @@ class MainActivity : ComponentActivity() {
                                         if (selectedTab == 0) {
                                             QuickStatsBar(
                                                 eventRepository = eventRepository,
+                                                currentDate = timelineDate,
                                                 onEventTypeClick = { eventType ->
                                                     showEventListScreen = eventType
                                                 },
@@ -375,7 +379,8 @@ class MainActivity : ComponentActivity() {
                                         vm = timelineVm,
                                         eventRepository = eventRepository,
                                         deviceId = deviceId,
-                                        date = LocalDate.now(),
+                                        date = timelineDate,
+                                        onDateChanged = { newDate -> timelineDate = newDate },
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .padding(innerPadding)
