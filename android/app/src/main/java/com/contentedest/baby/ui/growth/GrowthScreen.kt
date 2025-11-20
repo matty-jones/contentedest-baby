@@ -314,27 +314,27 @@ fun GrowthChart(
     val darkerColor1 = remember(lineColor) {
         // For median: lighter and more visible
         Color(
-            red = (lineColor.red * 0.7f).coerceIn(0f, 1f),
-            green = (lineColor.green * 0.7f).coerceIn(0f, 1f),
-            blue = (lineColor.blue * 0.7f).coerceIn(0f, 1f),
+            red = (lineColor.red * 0.90f).coerceIn(0f, 1f),
+            green = (lineColor.green * 0.90f).coerceIn(0f, 1f),
+            blue = (lineColor.blue * 0.90f).coerceIn(0f, 1f),
             alpha = 0.75f
         )
     }
     val darkerColor2 = remember(lineColor) {
         // For 25th/75th: lighter and more visible
         Color(
-            red = (lineColor.red * 0.6f).coerceIn(0f, 1f),
-            green = (lineColor.green * 0.6f).coerceIn(0f, 1f),
-            blue = (lineColor.blue * 0.6f).coerceIn(0f, 1f),
+            red = (lineColor.red * 0.85f).coerceIn(0f, 1f),
+            green = (lineColor.green * 0.85f).coerceIn(0f, 1f),
+            blue = (lineColor.blue * 0.85f).coerceIn(0f, 1f),
             alpha = 0.65f
         )
     }
     val darkerColor3 = remember(lineColor) {
         // For 5th/95th: lighter and more visible
         Color(
-            red = (lineColor.red * 0.5f).coerceIn(0f, 1f),
-            green = (lineColor.green * 0.5f).coerceIn(0f, 1f),
-            blue = (lineColor.blue * 0.5f).coerceIn(0f, 1f),
+            red = (lineColor.red * 0.80f).coerceIn(0f, 1f),
+            green = (lineColor.green * 0.80f).coerceIn(0f, 1f),
+            blue = (lineColor.blue * 0.80f).coerceIn(0f, 1f),
             alpha = 0.55f
         )
     }
