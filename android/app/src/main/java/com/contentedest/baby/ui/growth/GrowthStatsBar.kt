@@ -12,6 +12,9 @@ import androidx.compose.ui.unit.sp
 import com.contentedest.baby.data.repo.GrowthRepository
 import kotlinx.coroutines.launch
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.Period
 
 @Composable
 fun GrowthStatsBar(
@@ -77,35 +80,38 @@ fun GrowthStatsBar(
 
 private fun formatTimeSince(firstTs: Long): String {
     val now = Instant.now().epochSecond
-    var remainingSeconds = now - firstTs
+    val firstInstant = Instant.ofEpochSecond(firstTs)
+    val nowInstant = Instant.ofEpochSecond(now)
     
-    if (remainingSeconds < 0) return "0 days"
+    // Convert to LocalDate in system timezone
+    val firstDate = firstInstant.atZone(ZoneId.systemDefault()).toLocalDate()
+    val nowDate = nowInstant.atZone(ZoneId.systemDefault()).toLocalDate()
     
-    // Calculate each unit
-    val years = remainingSeconds / (365 * 24 * 3600)
-    remainingSeconds %= (365 * 24 * 3600)
+    if (nowDate.isBefore(firstDate)) return "0 days"
     
-    val months = remainingSeconds / (30 * 24 * 3600) // Approximate: 30 days per month
-    remainingSeconds %= (30 * 24 * 3600)
+    // Calculate period difference (gives us years, months, and days)
+    val period = Period.between(firstDate, nowDate)
     
-    val weeks = remainingSeconds / (7 * 24 * 3600)
-    remainingSeconds %= (7 * 24 * 3600)
+    // Calculate total months (years * 12 + months)
+    val totalMonths = period.years * 12 + period.months
     
-    val days = remainingSeconds / (24 * 3600)
+    // Get remaining days from the period
+    var remainingDays = period.days.toLong()
+    
+    // Calculate weeks from remaining days
+    val weeks = remainingDays / 7
+    remainingDays %= 7
     
     val parts = mutableListOf<String>()
     
-    if (years > 0) {
-        parts.add("$years year${if (years != 1L) "s" else ""}")
-    }
-    if (months > 0) {
-        parts.add("$months month${if (months != 1L) "s" else ""}")
+    if (totalMonths > 0) {
+        parts.add("$totalMonths month${if (totalMonths != 1) "s" else ""}")
     }
     if (weeks > 0) {
         parts.add("$weeks week${if (weeks != 1L) "s" else ""}")
     }
-    if (days > 0 || parts.isEmpty()) {
-        parts.add("$days day${if (days != 1L) "s" else ""}")
+    if (remainingDays > 0 || parts.isEmpty()) {
+        parts.add("$remainingDays day${if (remainingDays != 1L) "s" else ""}")
     }
     
     return parts.joinToString(", ")
