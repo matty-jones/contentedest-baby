@@ -37,6 +37,8 @@ import com.patrykandpatrick.vico.core.cartesian.layer.*
 import com.patrykandpatrick.vico.core.cartesian.data.CartesianLayerRangeProvider
 import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModel
 import com.patrykandpatrick.vico.core.cartesian.data.LineCartesianLayerModel
+import com.patrykandpatrick.vico.core.cartesian.Scroll
+import com.patrykandpatrick.vico.core.cartesian.AutoScrollCondition
 import androidx.compose.ui.graphics.toArgb
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -691,7 +693,12 @@ fun EventChart(
         CartesianChartModel(models = listOf(model))
     }
 
-    val chartScrollState = rememberVicoScrollState()
+    val chartScrollState = rememberVicoScrollState(
+        scrollEnabled = true,
+        initialScroll = Scroll.Absolute.End,
+        autoScroll = Scroll.Absolute.End,
+        autoScrollCondition = AutoScrollCondition.OnModelGrowth,
+    )
 
     // Use Vico chart
     Box(modifier = modifier) {

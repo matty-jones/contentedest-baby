@@ -29,6 +29,8 @@ import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
 import com.patrykandpatrick.vico.core.cartesian.data.CartesianLayerModel
 import com.patrykandpatrick.vico.core.cartesian.data.LineCartesianLayerModel
 import com.patrykandpatrick.vico.core.cartesian.layer.LineCartesianLayer
+import com.patrykandpatrick.vico.core.cartesian.Scroll
+import com.patrykandpatrick.vico.core.cartesian.AutoScrollCondition
 import com.patrykandpatrick.vico.core.common.data.ExtraStore
 import com.patrykandpatrick.vico.core.common.data.MutableExtraStore
 import kotlinx.coroutines.launch
@@ -531,7 +533,12 @@ fun GrowthChart(
         }
     }
 
-    val chartScrollState = rememberVicoScrollState()
+    val chartScrollState = rememberVicoScrollState(
+        scrollEnabled = true,
+        initialScroll = Scroll.Absolute.End,
+        autoScroll = Scroll.Absolute.End,
+        autoScrollCondition = AutoScrollCondition.OnModelGrowth,
+    )
     
     // State for touch interaction
     var tappedX by remember { mutableStateOf<Float?>(null) }
