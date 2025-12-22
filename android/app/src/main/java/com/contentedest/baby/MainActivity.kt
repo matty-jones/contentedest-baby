@@ -228,7 +228,7 @@ class MainActivity : ComponentActivity() {
                             }
                             Box(modifier = Modifier.weight(1f)) {
                                 NurseryScreen(
-                                    streamUrl = "http://192.168.86.3:1984/stream.html?src=hubble_android",
+                                    streamUrl = "rtsp://blasky:su8a3r0dud3@192.168.86.162:554/stream1",
                                     modifier = Modifier.fillMaxSize()
                                 )
                             }
@@ -399,7 +399,7 @@ class MainActivity : ComponentActivity() {
                                     // Nursery screen - only shown in portrait mode here
                                     // (landscape mode is handled above)
                                     NurseryScreen(
-                                        streamUrl = "http://192.168.86.3:1984/stream.html?src=hubble_android",
+                                        streamUrl = "rtsp://blasky:su8a3r0dud3@192.168.86.162:554/stream1",
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .padding(innerPadding)
