@@ -1,7 +1,9 @@
 package com.contentedest.baby.ui.nursery
 
+import android.app.Activity
 import android.net.Uri
 import android.util.Log
+import android.view.WindowManager
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -18,6 +20,22 @@ import androidx.media3.ui.PlayerView
 @Composable
 fun NurseryScreen(streamUrl: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    
+    // Keep screen on while viewing the nursery camera (full-screen media app behavior)
+    DisposableEffect(Unit) {
+        val activity = context as? Activity
+        val window = activity?.window
+        
+        // Add FLAG_KEEP_SCREEN_ON to prevent screen timeout
+        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        Log.d("NurseryScreen", "Screen keep-on enabled")
+        
+        onDispose {
+            // Remove FLAG_KEEP_SCREEN_ON when leaving the screen
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            Log.d("NurseryScreen", "Screen keep-on disabled")
+        }
+    }
     
     // Create and remember ExoPlayer instance
     val exoPlayer = remember {
