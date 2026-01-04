@@ -8,7 +8,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -20,6 +23,7 @@ import androidx.media3.ui.PlayerView
 @Composable
 fun NurseryScreen(streamUrl: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     
     // Keep screen on while viewing the nursery camera (full-screen media app behavior)
     DisposableEffect(Unit) {
@@ -64,8 +68,8 @@ fun NurseryScreen(streamUrl: String, modifier: Modifier = Modifier) {
         }
     }
     
-    // Set media source when URL changes
-    LaunchedEffect(streamUrl) {
+    // Function to load/reload the RTSP stream
+    val loadStream: () -> Unit = {
         Log.d("NurseryScreen", "Loading RTSP stream: $streamUrl")
         try {
             // Stop and clear any existing media
@@ -88,6 +92,51 @@ fun NurseryScreen(streamUrl: String, modifier: Modifier = Modifier) {
         } catch (e: Exception) {
             Log.e("NurseryScreen", "Failed to load RTSP stream", e)
             e.printStackTrace()
+        }
+    }
+    
+    // Set media source when URL changes
+    LaunchedEffect(streamUrl) {
+        loadStream()
+    }
+    
+    // Handle lifecycle events - reconnect stream when app resumes
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    Log.d("NurseryScreen", "App resumed - checking stream connection")
+                    // Check if player is in a disconnected state
+                    val playbackState = exoPlayer.playbackState
+                    val isPlaying = exoPlayer.isPlaying
+                    
+                    // If player is idle, ended, or not playing, reconnect
+                    if (playbackState == Player.STATE_IDLE || 
+                        playbackState == Player.STATE_ENDED || 
+                        (!isPlaying && playbackState != Player.STATE_BUFFERING)) {
+                        Log.d("NurseryScreen", "Stream appears disconnected, reconnecting...")
+                        loadStream()
+                    } else {
+                        // Try to resume if paused
+                        if (!isPlaying && playbackState == Player.STATE_READY) {
+                            Log.d("NurseryScreen", "Resuming paused stream")
+                            exoPlayer.play()
+                        }
+                    }
+                }
+                Lifecycle.Event.ON_PAUSE -> {
+                    Log.d("NurseryScreen", "App paused - pausing player")
+                    // Optionally pause when going to background to save resources
+                    // exoPlayer.pause()
+                }
+                else -> {}
+            }
+        }
+        
+        lifecycleOwner.lifecycle.addObserver(observer)
+        
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
     
