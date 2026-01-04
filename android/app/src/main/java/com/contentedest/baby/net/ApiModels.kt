@@ -56,6 +56,7 @@ data class UpdateInfoResponse(
     @Json(name = "version_name") val versionName: String,
     @Json(name = "download_url") val downloadUrl: String,
     @Json(name = "release_notes") val releaseNotes: String? = null,
+    @Json(name = "commit_message") val commitMessage: String? = null,
     val mandatory: Boolean = false
 )
 

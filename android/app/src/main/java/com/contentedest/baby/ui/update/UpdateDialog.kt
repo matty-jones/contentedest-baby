@@ -10,6 +10,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.contentedest.baby.net.UpdateInfoResponse
 
+private fun truncateCommitMessage(message: String, maxLength: Int = 50): String {
+    return if (message.length <= maxLength) {
+        message
+    } else {
+        message.take(maxLength).trimEnd() + "..."
+    }
+}
+
 @Composable
 fun UpdateDialog(
     updateInfo: UpdateInfoResponse,
@@ -42,6 +50,15 @@ fun UpdateDialog(
                     text = "Version ${updateInfo.versionName} is available",
                     style = MaterialTheme.typography.bodyLarge
                 )
+                
+                if (!updateInfo.commitMessage.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = truncateCommitMessage(updateInfo.commitMessage),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 
                 if (!updateInfo.releaseNotes.isNullOrBlank()) {
                     Spacer(modifier = Modifier.height(12.dp))
