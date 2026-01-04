@@ -212,6 +212,23 @@ Date: 2025-09-19
 - Added dependencies: `media3-exoplayer`, `media3-exoplayer-rtsp`, `media3-ui`, and `material-icons-extended`.
 - All modified files pass lints.
 
+### RTSP Stream Reconnection Fix (2025-01-XX)
+
+- **Problem**: RTSP stream would drop and show blank screen when user task-switched away from nursery screen and returned.
+- **Root Cause**: ExoPlayer doesn't automatically reconnect RTSP streams when app resumes from background. The connection is lost when Android pauses the app.
+- **Solution**: Added lifecycle-aware reconnection logic to `NurseryScreen`:
+  - Extracted stream loading into reusable `loadStream()` function
+  - Added `LifecycleEventObserver` to monitor app lifecycle events
+  - On `ON_RESUME`: Checks if player is disconnected (idle, ended, or not playing) and automatically reconnects
+  - On `ON_PAUSE`: Logs pause event (optionally can pause player to save resources)
+- **Implementation Details**:
+  - Uses `LocalLifecycleOwner` to observe activity lifecycle
+  - Detects disconnected state by checking `playbackState` and `isPlaying`
+  - Reconnects stream by calling `loadStream()` when needed
+  - Also attempts to resume if player is paused but ready
+- **Files Updated**: `android/app/src/main/java/com/contentedest/baby/ui/nursery/NurseryScreen.kt`
+- **Impact**: Stream now automatically reconnects when user returns to app, eliminating blank screen issue.
+
 ## Server Production Setup (2025-11-06)
 
 ### Database Initialization and Data Import
