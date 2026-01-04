@@ -3,6 +3,7 @@ import time
 import logging
 import csv
 import os
+import subprocess
 from pathlib import Path
 from fastapi import FastAPI, Depends, Request, status
 from fastapi.responses import FileResponse
@@ -285,11 +286,30 @@ def get_update_info():
     # Get the base URL from environment or use default
     base_url = os.getenv("BASE_URL", "http://192.168.86.3:8005")
     
+    # Get the latest commit message from git
+    commit_message = None
+    try:
+        # Get the project root directory (parent of server directory)
+        project_root = Path(__file__).parent.parent.parent
+        result = subprocess.run(
+            ["git", "log", "-1", "--pretty=format:%s"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0 and result.stdout:
+            commit_message = result.stdout.strip()
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, Exception) as e:
+        logger.warning(f"Failed to get commit message: {e}")
+        commit_message = None
+    
     return UpdateInfoResponse(
         version_code=26,
         version_name="1.3.22",
         download_url=f"{base_url}/app/download/latest.apk",
         release_notes="Initial release",
+        commit_message=commit_message,
         mandatory=False  # Set to True to force updates
     )
 

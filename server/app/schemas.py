@@ -49,6 +49,7 @@ class UpdateInfoResponse(BaseModel):
     version_name: str
     download_url: str
     release_notes: Optional[str] = None
+    commit_message: Optional[str] = None
     mandatory: bool = False
 
 
