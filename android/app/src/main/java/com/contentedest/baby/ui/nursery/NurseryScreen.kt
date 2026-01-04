@@ -7,6 +7,10 @@ import android.view.WindowManager
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
@@ -106,28 +110,43 @@ fun NurseryScreen(streamUrl: String, modifier: Modifier = Modifier) {
             when (event) {
                 Lifecycle.Event.ON_RESUME -> {
                     Log.d("NurseryScreen", "App resumed - checking stream connection")
-                    // Check if player is in a disconnected state
-                    val playbackState = exoPlayer.playbackState
-                    val isPlaying = exoPlayer.isPlaying
-                    
-                    // If player is idle, ended, or not playing, reconnect
-                    if (playbackState == Player.STATE_IDLE || 
-                        playbackState == Player.STATE_ENDED || 
-                        (!isPlaying && playbackState != Player.STATE_BUFFERING)) {
-                        Log.d("NurseryScreen", "Stream appears disconnected, reconnecting...")
-                        loadStream()
-                    } else {
-                        // Try to resume if paused
-                        if (!isPlaying && playbackState == Player.STATE_READY) {
-                            Log.d("NurseryScreen", "Resuming paused stream")
-                            exoPlayer.play()
+                    // Use coroutine scope with Main dispatcher to check state after a brief delay
+                    // Player state might not be immediately updated when lifecycle event fires
+                    try {
+                        CoroutineScope(Dispatchers.Main).launch {
+                            try {
+                                delay(100) // Small delay to let player state stabilize
+                                
+                                val playbackState = exoPlayer.playbackState
+                                val isPlaying = exoPlayer.isPlaying
+                                val hasError = exoPlayer.playerError != null
+                                
+                                Log.d("NurseryScreen", "Player state after resume: playbackState=$playbackState, isPlaying=$isPlaying, hasError=$hasError")
+                                
+                                // Check if we need to reconnect
+                                val needsReconnect = playbackState == Player.STATE_IDLE || 
+                                                    playbackState == Player.STATE_ENDED || 
+                                                    hasError ||
+                                                    (!isPlaying && playbackState != Player.STATE_BUFFERING)
+                                
+                                // Always restart stream on resume to ensure proper surface attachment
+                                // RTSP streams need fresh connection after background
+                                Log.d("NurseryScreen", "Restarting stream on resume to ensure proper surface attachment")
+                                loadStream()
+                            } catch (e: Exception) {
+                                Log.e("NurseryScreen", "Error in resume check coroutine", e)
+                            }
                         }
+                    } catch (e: Exception) {
+                        Log.e("NurseryScreen", "Error launching resume check coroutine", e)
                     }
                 }
                 Lifecycle.Event.ON_PAUSE -> {
                     Log.d("NurseryScreen", "App paused - pausing player")
-                    // Optionally pause when going to background to save resources
-                    // exoPlayer.pause()
+                    // Pause player when going to background
+                    if (exoPlayer.isPlaying) {
+                        exoPlayer.pause()
+                    }
                 }
                 else -> {}
             }
@@ -159,7 +178,7 @@ fun NurseryScreen(streamUrl: String, modifier: Modifier = Modifier) {
             }
         },
         update = { view ->
-            // Update player if URL changes
+            // Ensure player is always attached
             if (view.player != exoPlayer) {
                 view.player = exoPlayer
             }
