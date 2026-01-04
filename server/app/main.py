@@ -286,8 +286,8 @@ def get_update_info():
     base_url = os.getenv("BASE_URL", "http://192.168.86.3:8005")
     
     return UpdateInfoResponse(
-        version_code=26,
-        version_name="1.3.22",
+        version_code=32,
+        version_name="1.5.2",
         download_url=f"{base_url}/app/download/latest.apk",
         release_notes="Initial release",
         mandatory=False  # Set to True to force updates
