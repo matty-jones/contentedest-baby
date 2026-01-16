@@ -27,12 +27,8 @@ Offline-first baby tracker for Sleep, Feeding, Nappy, and Growth tracking with a
 
 ## Repo Layout
 
-- `The_Contentedest_Baby_PRD.md` — Product & Technical Requirements
-- `PROGRESS.md` — Development progress log and recent changes
 - `server/` — FastAPI LAN server (SQLite)
 - `android/` — Android app (Kotlin, Jetpack Compose, Room, Hilt)
-- `RELEASE_GUIDE.md` — Guide for releasing new app versions
-- `UPDATE_SYSTEM.md` — OTA update system documentation
 
 ## Quickstart — Server
 
@@ -190,7 +186,7 @@ If timestamps are displaying with incorrect offsets, use the timezone fix script
 
 ### OTA Update System
 
-The app includes an OTA update system that checks for updates on startup. See `UPDATE_SYSTEM.md` and `RELEASE_GUIDE.md` for details on releasing new versions.
+The app includes an OTA update system that checks for updates on startup.
 
 **Automated Release:**
 ```bash
@@ -203,14 +199,37 @@ This script automatically:
 - Copies APK to `server/apks/latest.apk`
 - Updates server version information
 
+**Manual Release:**
+1. Update `versionCode` and `versionName` in `android/app/build.gradle.kts`
+2. Update `version_code` and `version_name` in `server/app/main.py` `get_update_info()` function
+3. Build APK: `cd android && ./gradlew assembleRelease`
+4. Copy APK: `cp android/app/build/outputs/apk/release/app-release.apk server/apks/latest.apk`
+5. Restart server if running as service: `sudo systemctl restart contentedest-baby.service`
+
+**Troubleshooting:**
+- Update dialog doesn't appear: Verify server `version_code` > app `version_code` and `/app/update` endpoint is accessible
+- Download fails: Check APK exists at `server/apks/latest.apk` and server logs
+- Installation fails: User may need to enable "Install from unknown sources" in Android settings
+
 ## Development Notes
 
 - All timestamps stored and synced in UTC (seconds).
 - Conflict resolution: (version, updated_ts, device_id) — higher tuple wins.
+- Events identified by `event_id` (primary key), not timestamps — timezone migrations won't create duplicates.
 - Dark-mode-first UI.
 - Sleep classification: 19:00–07:00 and ≥2h duration => Night sleep.
 - Server runs on port 8005 by default.
 - Base URL configured in `BuildConfig.BASE_URL` (default: `http://192.168.86.3:8005/`).
+
+### Troubleshooting
+
+**Sync Issues:**
+- If sync clock gets out of sync after timezone migration, reset it via Statistics screen debug options (if available) or directly in database: `UPDATE sync_state SET last_server_clock = 0 WHERE id = 1;`
+- Events are matched by `event_id`, so timezone changes won't create duplicates — server version with higher `updated_ts` will win in conflict resolution.
+
+**Timezone Issues:**
+- If timestamps display with incorrect offsets, use `./fix_timezone_offset.py` script (see Database Utilities section).
+- Before timezone migration: Ensure all devices sync to server first to preserve any local changes.
 
 ## API Endpoints
 
