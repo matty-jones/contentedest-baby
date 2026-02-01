@@ -17,3 +17,4 @@ TEMP
 *.patch
 *.backup
 *.swp
+PROGRESS.md
