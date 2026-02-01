@@ -11,6 +11,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
@@ -102,6 +103,60 @@ fun NurseryScreen(streamUrl: String, modifier: Modifier = Modifier) {
     // Set media source when URL changes
     LaunchedEffect(streamUrl) {
         loadStream()
+    }
+    
+    // Freeze detection: Monitor player position to detect frozen streams
+    // Track last known position and timestamp for freeze detection
+    var lastPosition by remember { mutableStateOf(0L) }
+    var lastPositionTime by remember { mutableStateOf(System.currentTimeMillis()) }
+    
+    // Position monitoring coroutine - detects when stream freezes
+    LaunchedEffect(exoPlayer, lifecycleOwner.lifecycle.currentState) {
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            while (isActive) {
+                delay(2000) // Check every 2 seconds
+                
+                val currentState = exoPlayer.playbackState
+                val isPlaying = exoPlayer.isPlaying
+                val currentPosition = exoPlayer.currentPosition
+                
+                // Only monitor if player is actively playing
+                if (isPlaying && (currentState == Player.STATE_READY || currentState == Player.STATE_BUFFERING)) {
+                    val now = System.currentTimeMillis()
+                    
+                    // Handle position resets (stream restart) - treat as position advance
+                    if (currentPosition < lastPosition) {
+                        // Position reset - stream likely restarted, update tracking
+                        lastPosition = currentPosition
+                        lastPositionTime = now
+                    } else if (currentPosition > lastPosition) {
+                        // Position advanced - stream is healthy
+                        lastPosition = currentPosition
+                        lastPositionTime = now
+                    } else {
+                        // Position hasn't advanced - check if frozen
+                        val timeSinceLastAdvance = now - lastPositionTime
+                        if (timeSinceLastAdvance >= 5000) { // 5 second threshold
+                            Log.w("NurseryScreen", "Stream freeze detected - position stalled for ${timeSinceLastAdvance}ms")
+                            loadStream() // Trigger recovery
+                            lastPositionTime = now // Reset timer
+                            // Reset position tracking after recovery attempt
+                            lastPosition = 0L
+                        }
+                    }
+                } else {
+                    // Reset tracking when not playing
+                    lastPosition = currentPosition
+                    lastPositionTime = System.currentTimeMillis()
+                }
+            }
+        }
+    }
+    
+    // Reset position tracking when stream is manually reloaded
+    LaunchedEffect(streamUrl) {
+        lastPosition = 0L
+        lastPositionTime = System.currentTimeMillis()
     }
     
     // Handle lifecycle events - reconnect stream when app resumes
