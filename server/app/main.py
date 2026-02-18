@@ -5,14 +5,27 @@ import csv
 import os
 import subprocess
 from pathlib import Path
-from fastapi import FastAPI, Depends, Request, status
+from fastapi import FastAPI, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from .database import Base, engine, SessionLocal
 from .models import Device, Event, GrowthData
-from .schemas import PairRequest, PairResponse, EventDTO, SyncPushResponse, SyncPushResponseItem, SyncPullResponse, UpdateInfoResponse, GrowthDataDTO, GrowthPushResponse, GrowthPullResponse
+from .schemas import (
+    PairRequest,
+    PairResponse,
+    EventDTO,
+    SyncPushResponse,
+    SyncPushResponseItem,
+    SyncPullResponse,
+    UpdateInfoResponse,
+    GrowthDataDTO,
+    GrowthPushResponse,
+    GrowthPullResponse,
+    CribWebhookPayload,
+    CribWebhookResponse,
+)
 from .security import mint_token, token_hash
-from .auth import get_current_device, get_db
+from .auth import get_current_device, get_db, verify_webhook_secret
 from . import crud
 
 
@@ -171,6 +184,41 @@ def get_event_count(db: Session = Depends(get_db)):
     """Get the current number of events in the database."""
     count = db.query(Event).count()
     return {"count": count}
+
+
+@app.post("/webhook/crib", response_model=CribWebhookResponse)
+def webhook_crib(
+    body: CribWebhookPayload,
+    _: None = Depends(verify_webhook_secret),
+    db: Session = Depends(get_db),
+):
+    """
+    Accept crib state from HA: occupied = start sleep, empty = end current open sleep.
+    Idempotent for duplicate MQTT deliveries. See PROGRESS.md for env vars and HA setup.
+    """
+    device_id = (body.device_id or os.environ.get("CRIB_WEBHOOK_DEVICE_ID") or "").strip()
+    if not device_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="device_id required in body or CRIB_WEBHOOK_DEVICE_ID env",
+        )
+    now_ts = int(time.time())
+
+    if body.state == "occupied":
+        open_sleep = crud.get_open_sleep(db, device_id)
+        if open_sleep:
+            return CribWebhookResponse(action="already_recording", event_id=open_sleep.event_id)
+        event = crud.create_crib_sleep(db, device_id, now_ts)
+        return CribWebhookResponse(action="created", event_id=event.event_id)
+
+    if body.state == "empty":
+        open_sleep = crud.get_open_sleep(db, device_id)
+        if not open_sleep:
+            return CribWebhookResponse(action="no_open_sleep", event_id=None)
+        event = crud.close_sleep(db, open_sleep, now_ts)
+        return CribWebhookResponse(action="closed", event_id=event.event_id)
+
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid state")
 
 
 @app.post("/pair", response_model=PairResponse)

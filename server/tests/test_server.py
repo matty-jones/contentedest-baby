@@ -1,3 +1,4 @@
+import os
 import time
 import uuid
 import pytest
@@ -6,6 +7,8 @@ from app.main import app
 
 
 pytestmark = pytest.mark.asyncio
+
+WEBHOOK_DEVICE = "webhook-test-device"
 
 
 async def test_healthz():
@@ -67,5 +70,88 @@ async def test_pair_and_sync_flow(monkeypatch, tmp_path):
         r6 = await ac.get("/sync/pull?since=0", headers=headers)
         latest = [e for e in r6.json()["events"] if e["event_id"] == ev_id][0]
         assert latest["version"] == 2
+
+
+async def test_webhook_occupied_creates_then_idempotent():
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        r1 = await ac.post("/webhook/crib", json={"state": "occupied", "device_id": WEBHOOK_DEVICE})
+        assert r1.status_code == 200
+        data1 = r1.json()
+        assert data1["action"] == "created"
+        assert data1["event_id"] is not None
+        event_id = data1["event_id"]
+
+        r2 = await ac.post("/webhook/crib", json={"state": "occupied", "device_id": WEBHOOK_DEVICE})
+        assert r2.status_code == 200
+        data2 = r2.json()
+        assert data2["action"] == "already_recording"
+        assert data2["event_id"] == event_id
+
+
+async def test_webhook_empty_closes_then_idempotent():
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        await ac.post("/webhook/crib", json={"state": "occupied", "device_id": WEBHOOK_DEVICE})
+        r1 = await ac.post("/webhook/crib", json={"state": "empty", "device_id": WEBHOOK_DEVICE})
+        assert r1.status_code == 200
+        data1 = r1.json()
+        assert data1["action"] == "closed"
+        assert data1["event_id"] is not None
+
+        r2 = await ac.post("/webhook/crib", json={"state": "empty", "device_id": WEBHOOK_DEVICE})
+        assert r2.status_code == 200
+        data2 = r2.json()
+        assert data2["action"] == "no_open_sleep"
+
+
+async def test_webhook_empty_no_open_sleep():
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        r = await ac.post(
+            "/webhook/crib",
+            json={"state": "empty", "device_id": "nonexistent-device-no-open-sleep"},
+        )
+        assert r.status_code == 200
+        assert r.json()["action"] == "no_open_sleep"
+
+
+async def test_webhook_validation_missing_device_id(monkeypatch):
+    monkeypatch.delenv("CRIB_WEBHOOK_DEVICE_ID", raising=False)
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        r = await ac.post("/webhook/crib", json={"state": "occupied"})
+        assert r.status_code == 400
+
+
+async def test_webhook_validation_invalid_state():
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        r = await ac.post(
+            "/webhook/crib",
+            json={"state": "invalid", "device_id": WEBHOOK_DEVICE},
+        )
+        assert r.status_code == 422
+
+
+async def test_webhook_auth_required_when_secret_set(monkeypatch):
+    monkeypatch.setitem(os.environ, "CRIB_WEBHOOK_SECRET", "test-secret")
+    try:
+        async with AsyncClient(app=app, base_url="http://test") as ac:
+            r = await ac.post(
+                "/webhook/crib",
+                json={"state": "occupied", "device_id": WEBHOOK_DEVICE},
+            )
+            assert r.status_code == 401
+            r2 = await ac.post(
+                "/webhook/crib",
+                json={"state": "occupied", "device_id": WEBHOOK_DEVICE},
+                headers={"X-Webhook-Secret": "wrong"},
+            )
+            assert r2.status_code == 401
+            r3 = await ac.post(
+                "/webhook/crib",
+                json={"state": "occupied", "device_id": WEBHOOK_DEVICE},
+                headers={"X-Webhook-Secret": "test-secret"},
+            )
+            assert r3.status_code == 200
+            assert r3.json()["action"] in ("created", "already_recording")
+    finally:
+        monkeypatch.delenv("CRIB_WEBHOOK_SECRET", raising=False)
 
 

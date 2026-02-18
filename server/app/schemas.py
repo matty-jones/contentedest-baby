@@ -77,3 +77,13 @@ class GrowthPullResponse(BaseModel):
     data: List[GrowthDataDTO]
 
 
+class CribWebhookPayload(BaseModel):
+    state: Literal["occupied", "empty"]
+    device_id: Optional[str] = None
+
+
+class CribWebhookResponse(BaseModel):
+    action: Literal["created", "already_recording", "closed", "no_open_sleep"]
+    event_id: Optional[str] = None
+
+

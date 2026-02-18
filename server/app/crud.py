@@ -1,4 +1,5 @@
 from __future__ import annotations
+import uuid
 from typing import Iterable, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -136,5 +137,55 @@ def get_growth_data_by_category(session: Session, category: str) -> list[GrowthD
         GrowthData.deleted == False
     ).order_by(GrowthData.ts)
     return list(session.scalars(stmt).all())
+
+
+def get_open_sleep(session: Session, device_id: str) -> Event | None:
+    stmt = (
+        select(Event)
+        .where(
+            Event.device_id == device_id,
+            Event.type == "sleep",
+            Event.end_ts.is_(None),
+            Event.deleted == False,
+        )
+        .order_by(Event.start_ts.desc())
+        .limit(1)
+    )
+    return session.scalars(stmt).first()
+
+
+def create_crib_sleep(session: Session, device_id: str, start_ts: int) -> Event:
+    event_id = str(uuid.uuid4())
+    event = Event(
+        event_id=event_id,
+        type="sleep",
+        details="Crib",
+        payload={"source": "crib_webhook"},
+        start_ts=start_ts,
+        end_ts=None,
+        ts=start_ts,
+        created_ts=start_ts,
+        updated_ts=start_ts,
+        version=1,
+        deleted=False,
+        device_id=device_id,
+        server_clock=0,
+    )
+    event.server_clock = next_clock(session)
+    session.add(event)
+    session.commit()
+    session.refresh(event)
+    return event
+
+
+def close_sleep(session: Session, event: Event, end_ts: int) -> Event:
+    event.end_ts = end_ts
+    event.updated_ts = end_ts
+    event.version += 1
+    event.server_clock = next_clock(session)
+    session.add(event)
+    session.commit()
+    session.refresh(event)
+    return event
 
 

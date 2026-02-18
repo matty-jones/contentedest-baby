@@ -1,4 +1,6 @@
 from __future__ import annotations
+import os
+import secrets
 from fastapi import Header, HTTPException, status, Depends
 from sqlalchemy.orm import Session
 from .database import SessionLocal
@@ -12,6 +14,16 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def verify_webhook_secret(
+    x_webhook_secret: str | None = Header(default=None, alias="X-Webhook-Secret"),
+) -> None:
+    configured = os.environ.get("CRIB_WEBHOOK_SECRET")
+    if not configured:
+        return
+    if not x_webhook_secret or not secrets.compare_digest(x_webhook_secret, configured):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing webhook secret")
 
 
 def get_current_device(authorization: str | None = Header(default=None), db: Session = Depends(get_db)) -> Device:
