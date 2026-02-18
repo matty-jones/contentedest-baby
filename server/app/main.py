@@ -305,8 +305,8 @@ def get_update_info():
         commit_message = None
     
     return UpdateInfoResponse(
-        version_code=34,
-        version_name="1.5.4",
+        version_code=35,
+        version_name="1.5.5",
         download_url=f"{base_url}/app/download/latest.apk",
         release_notes="Initial release",
         commit_message=commit_message,
