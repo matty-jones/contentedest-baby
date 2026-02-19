@@ -8,8 +8,6 @@ from app.main import app
 
 pytestmark = pytest.mark.asyncio
 
-WEBHOOK_DEVICE = "webhook-test-device"
-
 
 async def test_healthz():
     async with AsyncClient(app=app, base_url="http://test") as ac:
@@ -73,15 +71,16 @@ async def test_pair_and_sync_flow(monkeypatch, tmp_path):
 
 
 async def test_webhook_occupied_creates_then_idempotent():
+    device_id = f"webhook-test-{uuid.uuid4()}"
     async with AsyncClient(app=app, base_url="http://test") as ac:
-        r1 = await ac.post("/webhook/crib", json={"state": "occupied", "device_id": WEBHOOK_DEVICE})
+        r1 = await ac.post("/webhook/crib", json={"state": "occupied", "device_id": device_id})
         assert r1.status_code == 200
         data1 = r1.json()
         assert data1["action"] == "created"
         assert data1["event_id"] is not None
         event_id = data1["event_id"]
 
-        r2 = await ac.post("/webhook/crib", json={"state": "occupied", "device_id": WEBHOOK_DEVICE})
+        r2 = await ac.post("/webhook/crib", json={"state": "occupied", "device_id": device_id})
         assert r2.status_code == 200
         data2 = r2.json()
         assert data2["action"] == "already_recording"
@@ -89,15 +88,16 @@ async def test_webhook_occupied_creates_then_idempotent():
 
 
 async def test_webhook_empty_closes_then_idempotent():
+    device_id = f"webhook-test-{uuid.uuid4()}"
     async with AsyncClient(app=app, base_url="http://test") as ac:
-        await ac.post("/webhook/crib", json={"state": "occupied", "device_id": WEBHOOK_DEVICE})
-        r1 = await ac.post("/webhook/crib", json={"state": "empty", "device_id": WEBHOOK_DEVICE})
+        await ac.post("/webhook/crib", json={"state": "occupied", "device_id": device_id})
+        r1 = await ac.post("/webhook/crib", json={"state": "empty", "device_id": device_id})
         assert r1.status_code == 200
         data1 = r1.json()
         assert data1["action"] == "closed"
         assert data1["event_id"] is not None
 
-        r2 = await ac.post("/webhook/crib", json={"state": "empty", "device_id": WEBHOOK_DEVICE})
+        r2 = await ac.post("/webhook/crib", json={"state": "empty", "device_id": device_id})
         assert r2.status_code == 200
         data2 = r2.json()
         assert data2["action"] == "no_open_sleep"
@@ -113,44 +113,56 @@ async def test_webhook_empty_no_open_sleep():
         assert r.json()["action"] == "no_open_sleep"
 
 
-async def test_webhook_validation_missing_device_id(monkeypatch):
+async def test_webhook_uses_default_device_id(monkeypatch):
     monkeypatch.delenv("CRIB_WEBHOOK_DEVICE_ID", raising=False)
     async with AsyncClient(app=app, base_url="http://test") as ac:
-        r = await ac.post("/webhook/crib", json={"state": "occupied"})
-        assert r.status_code == 400
+        await ac.post("/webhook/crib", json={"state": "empty"})
+        r1 = await ac.post("/webhook/crib", json={"state": "occupied"})
+        assert r1.status_code == 200
+        data1 = r1.json()
+        assert data1["action"] == "created"
+        assert data1["event_id"] is not None
+        
+        r2 = await ac.post("/webhook/crib", json={"state": "occupied"})
+        assert r2.status_code == 200
+        data2 = r2.json()
+        assert data2["action"] == "already_recording"
+        assert data2["event_id"] == data1["event_id"]
 
 
 async def test_webhook_validation_invalid_state():
+    device_id = f"webhook-test-{uuid.uuid4()}"
     async with AsyncClient(app=app, base_url="http://test") as ac:
         r = await ac.post(
             "/webhook/crib",
-            json={"state": "invalid", "device_id": WEBHOOK_DEVICE},
+            json={"state": "invalid", "device_id": device_id},
         )
         assert r.status_code == 422
 
 
 async def test_webhook_auth_required_when_secret_set(monkeypatch):
+    device_id = f"webhook-test-{uuid.uuid4()}"
     monkeypatch.setitem(os.environ, "CRIB_WEBHOOK_SECRET", "test-secret")
     try:
         async with AsyncClient(app=app, base_url="http://test") as ac:
             r = await ac.post(
                 "/webhook/crib",
-                json={"state": "occupied", "device_id": WEBHOOK_DEVICE},
+                json={"state": "occupied", "device_id": device_id},
             )
             assert r.status_code == 401
             r2 = await ac.post(
                 "/webhook/crib",
-                json={"state": "occupied", "device_id": WEBHOOK_DEVICE},
+                json={"state": "occupied", "device_id": device_id},
                 headers={"X-Webhook-Secret": "wrong"},
             )
             assert r2.status_code == 401
             r3 = await ac.post(
                 "/webhook/crib",
-                json={"state": "occupied", "device_id": WEBHOOK_DEVICE},
+                json={"state": "occupied", "device_id": device_id},
                 headers={"X-Webhook-Secret": "test-secret"},
             )
             assert r3.status_code == 200
-            assert r3.json()["action"] in ("created", "already_recording")
+            assert r3.json()["action"] == "created"
     finally:
         monkeypatch.delenv("CRIB_WEBHOOK_SECRET", raising=False)
 

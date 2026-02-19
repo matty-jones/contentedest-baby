@@ -26,7 +26,7 @@ Date: 2025-09-19
 - **Behaviour:** `occupied` creates a new open sleep event (type=sleep, details=Crib) for the device; `empty` closes the current open sleep (sets end_ts). Clients receive new/updated events on next `/sync/pull`.
 - **Idempotency:** Duplicate MQTT deliveries are safe. Repeated `occupied` with no intervening `empty` returns `already_recording` and does not create a second open sleep. Repeated `empty` or `empty` before any `occupied` returns `no_open_sleep` and does not error.
 - **Env vars:**
-  - `CRIB_WEBHOOK_DEVICE_ID`: default device_id when not sent in the body (e.g. single-baby setup). If unset and body omits `device_id`, request returns 400.
+  - `CRIB_WEBHOOK_DEVICE_ID`: optional override for device_id when not sent in the body. If unset and body omits `device_id`, defaults to `"crib_webhook"`.
   - `CRIB_WEBHOOK_SECRET`: when set, requests must include header `X-Webhook-Secret: <value>` (constant-time comparison). When unset, no auth check (trusted network).
 - **Response:** 200 JSON with `action` one of `created` | `already_recording` | `closed` | `no_open_sleep`, and optional `event_id`.
 - **HA:** Trigger automation on crib classification state change; call REST to `POST .../webhook/crib` with body and optional header. No need to store event_id or do multiple requests.

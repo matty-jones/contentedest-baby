@@ -196,12 +196,7 @@ def webhook_crib(
     Accept crib state from HA: occupied = start sleep, empty = end current open sleep.
     Idempotent for duplicate MQTT deliveries. See PROGRESS.md for env vars and HA setup.
     """
-    device_id = (body.device_id or os.environ.get("CRIB_WEBHOOK_DEVICE_ID") or "").strip()
-    if not device_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="device_id required in body or CRIB_WEBHOOK_DEVICE_ID env",
-        )
+    device_id = (body.device_id or os.environ.get("CRIB_WEBHOOK_DEVICE_ID") or "crib_webhook").strip()
     now_ts = int(time.time())
 
     if body.state == "occupied":
