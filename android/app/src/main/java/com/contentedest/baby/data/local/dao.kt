@@ -15,7 +15,7 @@ interface EventsDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertSegments(segments: List<FeedSegmentEntity>)
 
-    @Query("SELECT * FROM events WHERE deleted = 0 AND ((start_ts NOT NULL AND end_ts NOT NULL) OR ts NOT NULL) AND ((start_ts BETWEEN :start AND :end) OR (ts BETWEEN :start AND :end)) ORDER BY COALESCE(start_ts, ts) ASC")
+    @Query("SELECT * FROM events WHERE deleted = 0 AND ((start_ts NOT NULL AND end_ts NOT NULL) OR ts NOT NULL) AND ((start_ts BETWEEN :start AND :end) OR (ts BETWEEN :start AND :end) OR (start_ts IS NOT NULL AND start_ts <= :end AND (end_ts IS NULL OR end_ts >= :start))) ORDER BY COALESCE(start_ts, ts) ASC")
     suspend fun eventsInRange(start: Long, end: Long): List<EventEntity>
 
     @Query("SELECT * FROM feed_segments WHERE event_id = :eventId ORDER BY start_ts ASC")

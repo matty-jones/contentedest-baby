@@ -457,6 +457,11 @@ class EventRepository(
         eventsDao.getAllEvents().map { it.toDto() }
     }
 
+    suspend fun deleteEvent(eventId: String) = withContext(Dispatchers.IO) {
+        val now = java.time.Instant.now().epochSecond
+        eventsDao.softDelete(eventId, now)
+    }
+
     suspend fun updateEvent(
         eventId: String,
         eventType: EventType,

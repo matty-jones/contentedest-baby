@@ -33,6 +33,9 @@ Date: 2025-09-19
 
 ## Recent Fixes
 
+- **Timeline add-event default duration and cross-day events (2025-02-20):**
+  - Events that span a date boundary (e.g. sleep 8:13pm to 7:27am) are now shown on both days: `eventsInRange` includes events that overlap the day window (start_ts <= dayEnd AND (end_ts IS NULL OR end_ts >= dayStart)). SnakeTimeline already clamps draw range to the visible day.
+  - **Nappy type-based duration (2025-02-20):** Both "+" and timeline-initiated nappy flows now use the same type-based duration (Wet=3m, Dirty=5m, Mixed=4m via getNappyDuration). LiveNappyDialog now calls createNappy(now, deviceId, type, null, endUtc) with endUtc = now + duration from getNappyDuration(selected). AddEventDialog defaults to 5m when Nappy is selected and updates to 3/4/5m when user picks Wet/Dirty/Mixed.
 - Fixed server_clock issue: Seeded events now have proper server_clock values (1-4193) so they can be synced to Android app via /sync/pull endpoint.
 - Fixed Android authentication: Added auth interceptor to OkHttp client to automatically include Bearer token in API requests.
 - Fixed Android pairing persistence: Updated MainActivity to properly check pairing state on app startup.

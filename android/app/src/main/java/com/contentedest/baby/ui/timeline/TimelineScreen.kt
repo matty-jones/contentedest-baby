@@ -247,10 +247,12 @@ fun TimelineScreen(
         // Details dialog with proper formatting
         if (selectedEvent != null) {
             var showEditDialog by remember { mutableStateOf(false) }
+            var showDeleteConfirmation by remember { mutableStateOf(false) }
             EventDetailsDialog(
                 event = selectedEvent!!,
                 onDismiss = { selectedEvent = null },
-                onEdit = { showEditDialog = true }
+                onEdit = { showEditDialog = true },
+                onDelete = { showDeleteConfirmation = true }
             )
             
             if (showEditDialog) {
@@ -268,6 +270,35 @@ fun TimelineScreen(
                             vm.load(date)
                             // Trigger immediate sync to push the updated event to server
                             SyncWorker.triggerImmediateSync(context, deviceId)
+                        }
+                    }
+                )
+            }
+
+            if (showDeleteConfirmation) {
+                AlertDialog(
+                    onDismissRequest = { showDeleteConfirmation = false },
+                    title = { Text("Delete event?") },
+                    text = { Text("This event will be removed. Sync will update other devices.") },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                val eventToDelete = selectedEvent!!
+                                showDeleteConfirmation = false
+                                selectedEvent = null
+                                scope.launch {
+                                    eventRepository.deleteEvent(eventToDelete.event_id)
+                                    vm.load(date)
+                                    SyncWorker.triggerImmediateSync(context, deviceId)
+                                }
+                            }
+                        ) {
+                            Text("Delete", color = MaterialTheme.colorScheme.error)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDeleteConfirmation = false }) {
+                            Text("Cancel")
                         }
                     }
                 )
@@ -858,8 +889,12 @@ fun LiveNappyDialog(
                     Button(
                         onClick = {
                             val now = java.time.Instant.now().epochSecond
+                            val type = selected ?: "Unknown"
+                            val (hours, minutes) = getNappyDuration(type)
+                            val durationSeconds = hours * 3600L + minutes * 60L
+                            val endUtc = now + durationSeconds
                             scope.launch {
-                                eventRepository.logNappy(now, deviceId, selected ?: "Unknown", null)
+                                eventRepository.createNappy(now, deviceId, type, null, endUtc)
                                 onSaved(); onDismiss()
                             }
                         },
@@ -921,7 +956,8 @@ fun EventBar(
 fun EventDetailsDialog(
     event: EventEntity,
     onDismiss: () -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
 ) {
     val detail = buildString {
         // Type with mode
@@ -965,7 +1001,15 @@ fun EventDetailsDialog(
             TextButton(onClick = onEdit) { Text("Edit") }
         },
         title = { Text("Event Details") },
-        text = { Text(detail) }
+        text = {
+            Column {
+                Text(detail)
+                Spacer(Modifier.height(16.dp))
+                TextButton(onClick = onDelete) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
     )
 }
 
@@ -1086,9 +1130,9 @@ fun AddEventDialog(
     var selectedEventType by remember { mutableStateOf<EventType?>(null) }
     var selectedDetails by remember { mutableStateOf<String?>(null) }
     var startTime by remember { mutableStateOf(initialTime) }
-    var endTime by remember { mutableStateOf(initialTime.plusMinutes(30)) }
+    var endTime by remember { mutableStateOf(initialTime) }
     var durationHours by remember { mutableStateOf(0) }
-    var durationMinutes by remember { mutableStateOf(30) }
+    var durationMinutes by remember { mutableStateOf(0) }
     var showStartTimePicker by remember { mutableStateOf(false) }
     var showEndTimePicker by remember { mutableStateOf(false) }
     var showDurationPicker by remember { mutableStateOf(false) }
@@ -1139,7 +1183,12 @@ fun AddEventDialog(
                             selected = selectedEventType == type,
                             onClick = { 
                                 selectedEventType = type
-                                selectedDetails = null // Reset details when type changes
+                                selectedDetails = null
+                                if (type == EventType.nappy) {
+                                    val (h, m) = getNappyDuration("Dirty")
+                                    durationHours = h
+                                    durationMinutes = m
+                                }
                             },
                             label = { Text(type.name.replaceFirstChar { it.uppercase() }) }
                         )
