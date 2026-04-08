@@ -24,6 +24,7 @@ try:
     from server.app.database import Base, engine, SessionLocal
     from server.app.models import Event
     from server.app.crud import ensure_server_clock, get_clock, next_clock
+    from server.app.sleep_interval import normalize_sleep_end_after_start
 except Exception as import_err:  # pragma: no cover
     print(f"Failed to import server modules: {import_err}")
     print("Ensure you run this from the repository root and that Python can import the 'server.app' package.")
@@ -137,6 +138,15 @@ def load_csv_events(csv_path: str) -> List[Dict[str, Any]]:
             
             if start_ts is None and end_ts is None:
                 continue
+
+            if mapped_type == "sleep" and start_ts is not None and end_ts is not None:
+                start_ts, end_ts, err = normalize_sleep_end_after_start(start_ts, end_ts)
+                if err:
+                    print(
+                        f"WARNING: skipping sleep row (overnight fix would exceed 12h): {key}",
+                        file=sys.stderr,
+                    )
+                    continue
             
             ts = start_ts if start_ts is not None else end_ts
             
@@ -198,6 +208,15 @@ def load_json_events(json_path: str) -> List[Dict[str, Any]]:
         
         if start_ts is None and end_ts is None:
             continue
+
+        if mapped_type == "sleep" and start_ts is not None and end_ts is not None:
+            start_ts, end_ts, err = normalize_sleep_end_after_start(start_ts, end_ts)
+            if err:
+                print(
+                    f"WARNING: skipping sleep JSON event (overnight fix would exceed 12h): {key}",
+                    file=sys.stderr,
+                )
+                continue
         
         ts = start_ts if start_ts is not None else end_ts
         

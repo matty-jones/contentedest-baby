@@ -125,6 +125,15 @@ def seed_database(db: Session):
                     elif event_type == 'diaper':
                         event_type = 'nappy'
 
+                    if event_type == 'sleep':
+                        from .sleep_interval import normalize_sleep_end_after_start
+                        start_ts, end_ts, err = normalize_sleep_end_after_start(start_ts, end_ts)
+                        if err:
+                            logger.warning(
+                                "Skipping seed row: overnight fix would exceed 12h: %s", row
+                            )
+                            continue
+
                     # Create event
                     event = Event(
                         event_id=f"seed_{events_added}_{start_ts}",

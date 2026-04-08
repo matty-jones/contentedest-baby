@@ -460,3 +460,14 @@ To fix existing database on home server:
 
 ### Tests
 - `SleepAnalyticsTest`, `EventListStatsTest` (plus existing `TimeRulesAndStatsTest`).
+
+## Overnight sleep import fix (2026-04-09)
+
+### Problem
+CSV/JSON used one `Date` for both start and end times. Sleep crossing midnight produced `end_ts < start_ts`.
+
+### Behavior
+- `server/app/sleep_interval.py`: if `end_ts < start_ts`, add 86400 to `end_ts` unless the resulting duration exceeds 12 hours (then skip import row or log FLAG; seed skips row).
+- Applied for sleep in `import_data.py`, `migrate_database.py`, and `seed_database` in `server/app/main.py`.
+- **Scripts**: `server/scripts/fix_overnight_sleep_timestamps.py` (repair existing DB), `server/scripts/dedupe_exact_sleep_duplicates.py` (soft-delete exact duplicate sleep rows).
+- Tests: `server/tests/test_sleep_interval.py`.
