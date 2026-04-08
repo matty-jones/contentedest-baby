@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-List potential duplicate sleep rows in the events table (same device, same or near-identical
-start_ts/end_ts, different event_id). Run manually after backup; does not modify DB.
+List near-duplicate sleep pairs only (same device, start/end within 1s, different event_id).
+
+For a full read-only audit (counts, exact duplicate groups, and configurable tolerance),
+use audit_sleep_duplicates.py in this directory.
 
 Usage:
   export TCB_DB_PATH=/path/to/data.db
