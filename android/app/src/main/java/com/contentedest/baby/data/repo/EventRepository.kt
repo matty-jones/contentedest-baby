@@ -165,6 +165,10 @@ class EventRepository(
         events
     }
 
+    /** Same overlap semantics as [eventsForDay]; use for multi-baby-day windows with one query. */
+    suspend fun eventsOverlappingRange(startInclusive: Long, endInclusive: Long): List<EventEntity> =
+        eventsForDay(startInclusive, endInclusive)
+
     // --- Live add helpers ---
     suspend fun insertSleepSpan(
         deviceId: String,

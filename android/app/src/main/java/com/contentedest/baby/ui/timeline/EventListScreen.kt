@@ -16,6 +16,8 @@ import androidx.compose.ui.unit.dp
 import com.contentedest.baby.data.local.EventEntity
 import com.contentedest.baby.data.local.EventType
 import com.contentedest.baby.data.repo.EventRepository
+import com.contentedest.baby.domain.SleepAnalytics
+import com.contentedest.baby.domain.TimeRules
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
@@ -90,11 +92,9 @@ fun EventListScreen(
     // Helper function to reload events
     fun reloadEvents() {
         scope.launch {
-            val allEvents = mutableListOf<EventEntity>()
             val currentDaysToLoad = if (selectedTabIndex == 1) {
-                60 // Graph view: always load 60 days
+                60 // Graph view: 60 baby-days
             } else {
-                // List view: use selected stats range
                 when (selectedStatsRange) {
                     EventStatsRange.WEEK -> 7
                     EventStatsRange.FORTNIGHT -> 14
@@ -102,18 +102,14 @@ fun EventListScreen(
                 }
             }
             val currentToday = LocalDate.now()
-            
-            // Query events for each day
-            for (dayOffset in 0 until currentDaysToLoad) {
-                val date = currentToday.minusDays(dayOffset.toLong())
-                val dayStart = date.atStartOfDay(ZoneId.systemDefault()).toEpochSecond()
-                val dayEnd = date.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toEpochSecond()
-                
-                val dayEvents = eventRepository.eventsForDay(dayStart, dayEnd)
-                allEvents.addAll(dayEvents.filter { it.type == eventType })
-            }
-            
-            events = allEvents
+            val zone = ZoneId.systemDefault()
+            val rangeStart = TimeRules.babyDayStartEpochSeconds(currentToday.minusDays((currentDaysToLoad - 1).toLong()), zone)
+            val rangeEndInclusive = TimeRules.babyDayEndExclusiveEpochSeconds(currentToday, zone) - 1
+            val raw = eventRepository.eventsOverlappingRange(rangeStart, rangeEndInclusive)
+            events = raw
+                .filter { it.type == eventType }
+                .distinctBy { it.event_id }
+                .sortedByDescending { it.start_ts ?: it.ts ?: 0L }
         }
     }
     
@@ -122,14 +118,13 @@ fun EventListScreen(
         reloadEvents()
     }
     
-    // Group events by date
+    // Group events by baby-day (7am–7am), matching timeline
     val eventsByDate = remember(events) {
+        val zone = ZoneId.systemDefault()
         events.groupBy { event ->
             val timestamp = event.start_ts ?: event.ts ?: 0L
             if (timestamp > 0) {
-                Instant.ofEpochSecond(timestamp)
-                    .atZone(ZoneId.systemDefault())
-                    .toLocalDate()
+                TimeRules.babyLocalDateForInstant(timestamp, zone)
             } else {
                 LocalDate.now()
             }
@@ -495,50 +490,59 @@ fun EventGraphView(
         return
     }
 
-    // Group events by date and calculate daily values
-    val dailyData = remember(events) {
+    val dailyData = remember(events, eventType) {
         val today = LocalDate.now()
+        val zone = ZoneId.systemDefault()
+        val nowEpoch = Instant.now().epochSecond
         val dataMap = mutableMapOf<LocalDate, DailyEventData>()
-        
-        // Initialize map with last 60 days
         for (i in 0 until 60) {
             val date = today.minusDays(i.toLong())
             dataMap[date] = DailyEventData(date, 0, 0.0)
         }
-        
-        // Process events
-        events.forEach { event ->
-            val timestamp = event.start_ts ?: event.ts ?: return@forEach
-            val date = Instant.ofEpochSecond(timestamp)
-                .atZone(ZoneId.systemDefault())
-                .toLocalDate()
-            
-            val existing = dataMap[date] ?: DailyEventData(date, 0, 0.0)
-            
-            when (eventType) {
-                EventType.sleep -> {
-                    val duration = if (event.start_ts != null && event.end_ts != null) {
-                        (event.end_ts - event.start_ts) / 3600.0 // Convert to hours
-                    } else {
-                        0.0
+        when (eventType) {
+            EventType.sleep -> {
+                for (date in dataMap.keys) {
+                    val ws = TimeRules.babyDayStartEpochSeconds(date, zone)
+                    val we = TimeRules.babyDayEndExclusiveEpochSeconds(date, zone)
+                    var hours = 0.0
+                    var sessionOverlaps = 0
+                    for (event in events) {
+                        if (event.type != EventType.sleep || event.start_ts == null) continue
+                        val endEx = event.end_ts ?: nowEpoch
+                        val sec = TimeRules.intervalOverlapSeconds(event.start_ts, endEx, ws, we)
+                        if (sec > 0) {
+                            sessionOverlaps += 1
+                            hours += sec / 3600.0
+                        }
                     }
-                    dataMap[date] = existing.copy(
-                        count = existing.count + 1,
-                        value = existing.value + duration
-                    )
+                    dataMap[date] = DailyEventData(date, sessionOverlaps, hours)
                 }
-                EventType.feed -> {
-                    val duration = if (event.start_ts != null && event.end_ts != null) {
-                        (event.end_ts - event.start_ts) / 60.0 // Convert to minutes
-                    } else {
-                        0.0
+            }
+            EventType.feed -> {
+                for (date in dataMap.keys) {
+                    val ws = TimeRules.babyDayStartEpochSeconds(date, zone)
+                    val we = TimeRules.babyDayEndExclusiveEpochSeconds(date, zone)
+                    var minutes = 0.0
+                    var cnt = 0
+                    for (event in events) {
+                        if (event.type != EventType.feed) continue
+                        val s = event.start_ts ?: event.ts ?: continue
+                        val endEx = event.end_ts ?: event.ts ?: s
+                        val sec = TimeRules.intervalOverlapSeconds(s, endEx, ws, we)
+                        if (sec > 0) {
+                            cnt += 1
+                            minutes += sec / 60.0
+                        }
                     }
-                    dataMap[date] = existing.copy(
-                        count = existing.count + 1,
-                        value = existing.value + duration
-                    )
+                    dataMap[date] = DailyEventData(date, cnt, minutes)
                 }
-                EventType.nappy -> {
+            }
+            EventType.nappy -> {
+                for (event in events) {
+                    if (event.type != EventType.nappy) continue
+                    val t = event.ts ?: event.start_ts ?: continue
+                    val date = TimeRules.babyLocalDateForInstant(t, zone)
+                    val existing = dataMap[date] ?: continue
                     dataMap[date] = existing.copy(
                         count = existing.count + 1,
                         value = existing.value + 1.0
@@ -546,8 +550,6 @@ fun EventGraphView(
                 }
             }
         }
-        
-        // Sort by date ascending (oldest first) for chart display
         dataMap.values.sortedBy { it.date }.toList()
     }
 
@@ -753,25 +755,16 @@ fun EventStatsBar(
     modifier: Modifier = Modifier
 ) {
     val today = LocalDate.now()
+    val zone = ZoneId.systemDefault()
+    val nowEpoch = Instant.now().epochSecond
     val rangeDays = when (selectedRange) {
         EventStatsRange.WEEK -> 7
         EventStatsRange.FORTNIGHT -> 14
         EventStatsRange.MONTH -> 30
     }
     
-    val rangeStart = today.minusDays(rangeDays.toLong())
-    val rangeStartEpoch = rangeStart.atStartOfDay(ZoneId.systemDefault()).toEpochSecond()
-    val rangeEndEpoch = today.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toEpochSecond()
-    
-    val rangeEvents = remember(events, rangeStartEpoch, rangeEndEpoch) {
-        events.filter { event ->
-            val timestamp = event.start_ts ?: event.ts ?: 0L
-            timestamp >= rangeStartEpoch && timestamp < rangeEndEpoch
-        }
-    }
-    
-    val stats = remember(rangeEvents, eventType, rangeDays) {
-        calculateEventStats(rangeEvents, eventType, rangeDays)
+    val stats = remember(events, eventType, rangeDays, today, selectedRange, nowEpoch) {
+        calculateEventStats(events, eventType, rangeDays, today, zone, nowEpoch)
     }
     
     Card(
@@ -809,9 +802,15 @@ fun EventStatsBar(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                StatItem("Mean", stats.mean)
-                StatItem("Median", stats.median)
-                StatItem("Frequency", stats.frequency)
+                if (eventType == EventType.sleep) {
+                    StatItem("Mean daily", stats.mean)
+                    StatItem("Median daily", stats.median)
+                    StatItem("Sessions", stats.frequency)
+                } else {
+                    StatItem("Mean", stats.mean)
+                    StatItem("Median", stats.median)
+                    StatItem("Frequency", stats.frequency)
+                }
             }
         }
     }
@@ -842,43 +841,55 @@ data class EventStats(
     val frequency: String
 )
 
-fun calculateEventStats(events: List<EventEntity>, eventType: EventType, rangeDays: Int): EventStats {
+fun calculateEventStats(
+    events: List<EventEntity>,
+    eventType: EventType,
+    rangeDays: Int,
+    today: LocalDate,
+    zone: ZoneId,
+    nowEpoch: Long
+): EventStats {
     if (events.isEmpty()) {
         return EventStats("--", "--", "0")
     }
-    
+    val windowStart = TimeRules.babyDayStartEpochSeconds(today.minusDays((rangeDays - 1).toLong()), zone)
+    val windowEndExclusive = TimeRules.babyDayEndExclusiveEpochSeconds(today, zone)
+    val filtered =
+        events.filter { SleepAnalytics.eventOverlapsBabyWindow(it, windowStart, windowEndExclusive, nowEpoch) }
     return when (eventType) {
         EventType.sleep -> {
-            val durations = events
-                .filter { it.start_ts != null && it.end_ts != null }
-                .map { (it.end_ts!! - it.start_ts!!) / 3600.0 } // Hours
-            
-            if (durations.isEmpty()) {
-                EventStats("--", "--", "0")
-            } else {
-                val mean = durations.average()
-                val sorted = durations.sorted()
-                val median = if (sorted.size % 2 == 0) {
-                    (sorted[sorted.size / 2 - 1] + sorted[sorted.size / 2]) / 2.0
-                } else {
-                    sorted[sorted.size / 2]
-                }
-                val frequency = (durations.size.toDouble() / rangeDays)
-                
-                EventStats(
-                    mean = String.format("%.1f h", mean),
-                    median = String.format("%.1f h", median),
-                    frequency = String.format("%.1f/day", frequency)
-                )
+            val sleepEvents = filtered.filter { it.type == EventType.sleep }
+            if (sleepEvents.isEmpty()) {
+                return EventStats("--", "--", "0")
             }
+            val dailyTotals = SleepAnalytics.dailySleepTotalsHours(sleepEvents, rangeDays, today, nowEpoch, zone)
+            val mean = dailyTotals.average()
+            val sorted = dailyTotals.sorted()
+            val median = if (sorted.size % 2 == 0) {
+                (sorted[sorted.size / 2 - 1] + sorted[sorted.size / 2]) / 2.0
+            } else {
+                sorted[sorted.size / 2]
+            }
+            val merged = SleepAnalytics.mergeSleepIntervals(sleepEvents, nowEpoch = nowEpoch)
+            val sessionCount = SleepAnalytics.mergedSleepSessionsOverlappingWindow(
+                merged,
+                windowStart,
+                windowEndExclusive
+            )
+            val sessionsPerDay = sessionCount.toDouble() / rangeDays
+            EventStats(
+                mean = String.format("%.1f h", mean),
+                median = String.format("%.1f h", median),
+                frequency = String.format("%.1f/day", sessionsPerDay)
+            )
         }
         EventType.feed -> {
-            val durations = events
+            val feedEvents = filtered.filter { it.type == EventType.feed }
+            val durations = feedEvents
                 .filter { it.start_ts != null && it.end_ts != null }
-                .map { (it.end_ts!! - it.start_ts!!) / 60.0 } // Minutes
-            
+                .map { (it.end_ts!! - it.start_ts!!) / 60.0 }
             if (durations.isEmpty()) {
-                val count = events.size
+                val count = feedEvents.size
                 val frequency = (count.toDouble() / rangeDays)
                 EventStats("--", "--", String.format("%.1f/day", frequency))
             } else {
@@ -890,7 +901,6 @@ fun calculateEventStats(events: List<EventEntity>, eventType: EventType, rangeDa
                     sorted[sorted.size / 2]
                 }
                 val frequency = (durations.size.toDouble() / rangeDays)
-                
                 EventStats(
                     mean = String.format("%.0f m", mean),
                     median = String.format("%.0f m", median),
@@ -899,27 +909,19 @@ fun calculateEventStats(events: List<EventEntity>, eventType: EventType, rangeDa
             }
         }
         EventType.nappy -> {
-            // Calculate daily counts
-            val today = LocalDate.now()
             val dailyCounts = mutableMapOf<LocalDate, Int>()
-            
-            // Initialize all days in range with 0
             for (i in 0 until rangeDays) {
-                val date = today.minusDays(i.toLong())
+                val date = today.minusDays((rangeDays - 1 - i).toLong())
                 dailyCounts[date] = 0
             }
-            
-            // Count events per day
-            events.forEach { event ->
-                val timestamp = event.start_ts ?: event.ts ?: return@forEach
-                val date = Instant.ofEpochSecond(timestamp)
-                    .atZone(ZoneId.systemDefault())
-                    .toLocalDate()
-                dailyCounts[date] = (dailyCounts[date] ?: 0) + 1
+            filtered.filter { it.type == EventType.nappy }.forEach { event ->
+                val timestamp = event.ts ?: event.start_ts ?: return@forEach
+                val date = TimeRules.babyLocalDateForInstant(timestamp, zone)
+                if (dailyCounts.containsKey(date)) {
+                    dailyCounts[date] = (dailyCounts[date] ?: 0) + 1
+                }
             }
-            
-            val counts = dailyCounts.values.filter { it > 0 } // Only days with events
-            
+            val counts = dailyCounts.values.filter { it > 0 }
             if (counts.isEmpty()) {
                 EventStats(
                     mean = "0",
@@ -934,8 +936,8 @@ fun calculateEventStats(events: List<EventEntity>, eventType: EventType, rangeDa
                 } else {
                     sorted[sorted.size / 2].toDouble()
                 }
-                val frequency = (events.size.toDouble() / rangeDays)
-                
+                val nappyInWindow = filtered.count { it.type == EventType.nappy }
+                val frequency = (nappyInWindow.toDouble() / rangeDays)
                 EventStats(
                     mean = String.format("%.1f", mean),
                     median = String.format("%.1f", median),

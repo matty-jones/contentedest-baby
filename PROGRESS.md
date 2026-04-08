@@ -447,3 +447,16 @@ To fix existing database on home server:
 ```
 
 **Note**: After running migration, Android app will need to re-sync from server to get corrected timestamps.
+
+## Sleep Events list and stats (2026-04-08)
+
+### Changes
+- **Event list load**: Single `eventsOverlappingRange` query over N consecutive baby-days (7:00–7:00) instead of looping calendar midnights; `distinctBy { event_id }` so each row appears once.
+- **Grouping**: List sections use `TimeRules.babyLocalDateForInstant` (aligned with timeline / QuickStatsBar).
+- **Stats (sleep)**: Mean and median are **daily total sleep hours** over the selected range (zeros included for days with no sleep). **Sessions** shows merged sleep intervals (10 min gap) overlapping the window, per day on average.
+- **Graph**: Sleep and feed totals use **overlap** against each baby-day; nappies bucket by baby-day of `ts`.
+- **Domain**: `TimeRules` adds baby-day epoch helpers and `intervalOverlapSeconds`; `SleepAnalytics.kt` holds merge and overlap helpers.
+- **Server**: Optional `server/scripts/find_duplicate_sleep_events.py` lists duplicate sleep pairs (same device, start/end within 1s, different `event_id`).
+
+### Tests
+- `SleepAnalyticsTest`, `EventListStatsTest` (plus existing `TimeRulesAndStatsTest`).
