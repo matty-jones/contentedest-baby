@@ -401,17 +401,13 @@ private fun computeEventDrawables(
             val right = max(x0, x1)
             segments.add(EventSegment(Rect(left, rectTop, right, rectTop + geom.barHeight + geom.hitSlop), e))
 
-            // map row-start/end → physical left/right depending on direction
-            val touchesRowStart = startFrac == 0f
-            val touchesRowEnd = endFrac == 1f
-            val touchesPhysicalLeft  = if (goingRight) touchesRowStart else touchesRowEnd
-            val touchesPhysicalRight = if (goingRight) touchesRowEnd   else touchesRowStart
             val continues = segEnd < endOff
-
-            if (continues && (touchesPhysicalLeft || touchesPhysicalRight) && r < rows - 1) {
-                val edgeX = if (touchesPhysicalRight) geom.innerRight else geom.innerLeft
+            // Row-to-row connector must sit on the same side as the snake turn (right when L→R, left when R→L).
+            // Decide using the row boundary in seconds, not endFrac == 1f / touchesPhysical*, which can pick the wrong edge on R→L rows when floats are slightly below 1 or the bar touches the row start.
+            if (continues && segEnd == rowEndSec.toLong() && r < rows - 1) {
+                val edgeX = if (goingRight) geom.innerRight else geom.innerLeft
                 val nextY = geom.rowCenters[r + 1]
-                val cpX = if (touchesPhysicalRight) edgeX + geom.turnRadius else edgeX - geom.turnRadius // kept, but no longer used for drawing
+                val cpX = if (goingRight) edgeX + geom.turnRadius else edgeX - geom.turnRadius
                 val cpY = (rowY + nextY) / 2f
                 val start = Offset(edgeX, rowY)
                 val end = Offset(edgeX, nextY)
