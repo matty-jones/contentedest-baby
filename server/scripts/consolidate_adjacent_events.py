@@ -27,7 +27,6 @@ if _REPO_ROOT not in sys.path:
 # Epoch for 2026-01-01 00:00:00 UTC; only these rows are eligible for this script.
 CONSOLIDATION_MIN_START_TS = int(datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp())
 
-
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--db", default=os.environ.get("TCB_DB_PATH"))
