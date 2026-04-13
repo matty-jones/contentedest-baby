@@ -6,6 +6,77 @@
 
 **Verify:** `./gradlew :app:compileDebugKotlin` from `android/`.
 
+## 2026-04-13 — Refactor Wave 1 baseline
+
+**Scope:** Scripts + server refactor wave started from approved plan. No refactor edits applied yet.
+
+**Environment:** Created repo-local `.venv` and installed `server/requirements.txt`.
+
+**Baseline verify:** From repo root, `source .venv/bin/activate && PYTHONPATH=server pytest -q server/tests`.
+
+**Result:** `15 passed` in ~0.43s, with pre-existing warnings:
+- `pytest-asyncio` deprecation about `asyncio_default_fixture_loop_scope` unset.
+- FastAPI deprecation for `@app.on_event("startup")` in `server/app/main.py`.
+
+## 2026-04-13 — Refactor Wave 1 implementation
+
+**Tests added before refactor:**
+- `server/tests/test_server.py`: characterization coverage for sync adjacent-merge behavior and growth conflict/pull behavior (including `since=0` without category).
+- `server/tests/test_script_time_and_timezone.py`: script characterization tests for shared datetime parsing and `fix_timezone_offset.py` end-to-end timestamp shift.
+
+**Server refactor:**
+- Split monolithic `server/app/main.py` into focused modules:
+  - `server/app/routers/health_admin.py`
+  - `server/app/routers/webhook.py`
+  - `server/app/routers/sync.py`
+  - `server/app/routers/updates.py`
+  - `server/app/routers/growth.py`
+  - `server/app/seed.py`
+- `server/app/main.py` is now app wiring + middleware + startup seed hook.
+
+**Deduplication:**
+- Added `server/app/timeparse.py` for shared UTC-7 parsing.
+- Updated `import_data.py`, `migrate_database.py`, and `server/app/seed.py` to use shared parsing logic.
+- Reduced duplicate upsert field-copy logic in `server/app/crud.py` with shared helpers for resolve paths.
+
+**Cleanup:**
+- Removed large diagnostic/debug-only branch from growth pull fallback path, replacing it with direct non-deleted query logic.
+- Trimmed verbose historical parsing commentary to concise intent-level docstrings in import/migration paths.
+
+**Bugs found/fixed:** No behavioral bugs detected during this wave.
+
+**Final verify:** `source .venv/bin/activate && PYTHONPATH=server pytest -q server/tests` → `20 passed`, same 2 pre-existing warnings (`pytest-asyncio` loop-scope deprecation and FastAPI `on_event` deprecation).
+
+## 2026-04-13 — Refactor Wave 2 (Android only, no CI changes)
+
+**Baseline status:**
+- Ran `source ../.venv/bin/activate && ./gradlew :app:testDebugUnitTest` from `android/`.
+- Found 5 failing pre-existing tests in `RoomBasicsTest`, `EventRepositoryTest`, and `NetworkTests`.
+
+**Bugs fixed before new refactor/tests:**
+- Added Robolectric runner annotations to Room-based JVM tests:
+  - `android/app/src/test/java/com/contentedest/baby/RoomBasicsTest.kt`
+  - `android/app/src/test/java/com/contentedest/baby/EventRepositoryTest.kt`
+- Fixed mock JSON field names in `android/app/src/test/java/com/contentedest/baby/NetworkTests.kt` to match Moshi model annotations (`server_clock`, `event_id`).
+
+**New characterization tests:**
+- Added `android/app/src/test/java/com/contentedest/baby/GrowthPercentileCalculatorTest.kt` covering:
+  - median-to-50th-percentile behavior at known LMS medians
+  - weight unit consistency (`lb` vs `kg`)
+  - percentile round-trip behavior
+  - unsupported-unit/category null behavior
+
+**Android cleanup/refactor (no behavior change):**
+- `android/app/src/main/java/com/contentedest/baby/data/repo/EventRepository.kt`
+  - extracted repeated payload parsing into helper methods (`parseFeedMode`, `payloadNumberToInt`)
+  - removed unnecessary fully-qualified type usage and redundant comments
+- `android/app/src/main/java/com/contentedest/baby/ui/growth/GrowthPercentileCalculator.kt`
+  - trimmed verbose historical/math exposition comments down to concise intent-level comments
+
+**Verification:**
+- Re-ran `./gradlew :app:testDebugUnitTest` after each change set.
+- Final Android unit-test result: **BUILD SUCCESSFUL** (all unit tests passing).
+
 ## 2026-04-08 — Crib webhook sleep policy and adjacent merge
 
 **Goal:** Reduce Frigate/HA noise: ignore very short “sleep” segments from the crib webhook, merge sleep/feed fragments that are within 60s or overlap, and provide DB maintenance scripts.

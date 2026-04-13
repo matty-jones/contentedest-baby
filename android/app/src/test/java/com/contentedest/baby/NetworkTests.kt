@@ -51,7 +51,11 @@ class NetworkTests {
 
     @Test
     fun syncPush() {
-        server.enqueue(MockResponse().setBody("{\"serverClock\": 123, \"results\": []}").setHeader("Content-Type", "application/json"))
+        server.enqueue(
+            MockResponse()
+                .setBody("{\"server_clock\": 123, \"results\": []}")
+                .setHeader("Content-Type", "application/json")
+        )
         val events = listOf(
             com.contentedest.baby.net.EventDto(
                 eventId = "e1",
@@ -71,8 +75,12 @@ class NetworkTests {
 
     @Test
     fun syncPull() {
-        val eventsJson = "[{\"eventId\": \"e1\", \"type\": \"sleep\", \"start_ts\": 1000, \"end_ts\": 2000, \"created_ts\": 1000, \"updated_ts\": 2000, \"version\": 1, \"device_id\": \"dev1\"}]"
-        server.enqueue(MockResponse().setBody("{\"serverClock\": 123, \"events\": $eventsJson}").setHeader("Content-Type", "application/json"))
+        val eventsJson = "[{\"event_id\": \"e1\", \"type\": \"sleep\", \"start_ts\": 1000, \"end_ts\": 2000, \"created_ts\": 1000, \"updated_ts\": 2000, \"version\": 1, \"device_id\": \"dev1\"}]"
+        server.enqueue(
+            MockResponse()
+                .setBody("{\"server_clock\": 123, \"events\": $eventsJson}")
+                .setHeader("Content-Type", "application/json")
+        )
         val resp = kotlinx.coroutines.runBlocking { api.syncPull(100L) }
         assertEquals(123L, resp.serverClock)
         assertEquals(1, resp.events.size)

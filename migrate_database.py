@@ -23,6 +23,7 @@ try:
     from server.app.models import Event
     from server.app.crud import ensure_server_clock
     from server.app.sleep_interval import normalize_sleep_end_after_start
+    from server.app.timeparse import parse_local_utc_minus_7_to_utc_ts
 except Exception as import_err:  # pragma: no cover
     print(f"Failed to import server modules: {import_err}")
     print("Ensure you run this from the repository root and that Python can import the 'server.app' package.")
@@ -30,33 +31,8 @@ except Exception as import_err:  # pragma: no cover
 
 
 def parse_datetime(date_str: str, time_str: str) -> Optional[int]:
-    """
-    Parse date and time strings into epoch timestamp (UTC).
-    
-    Assumes the input datetime strings represent local time (UTC-7).
-    Converts to UTC by treating the datetime as UTC-7 and converting to UTC.
-    """
-    time_str = (time_str or "").strip()
-    if not time_str:
-        return None
-    fmts = [
-        "%Y-%m-%d %I:%M%p",  # 2025-09-16 02:15PM
-        "%Y-%m-%d %I:%M",    # 2025-09-16 02:15
-        "%Y-%m-%d %H:%M",    # 2025-09-16 14:15
-    ]
-    for fmt in fmts:
-        try:
-            # Parse as naive datetime (assumed to be in local timezone UTC-7)
-            naive_dt = datetime.strptime(f"{date_str} {time_str}", fmt)
-            # Convert to UTC by treating the naive datetime as UTC-7
-            from datetime import timezone, timedelta
-            tz_utc_minus_7 = timezone(timedelta(hours=-7))
-            aware_dt = naive_dt.replace(tzinfo=tz_utc_minus_7)
-            # Convert to UTC timestamp
-            return int(aware_dt.timestamp())
-        except ValueError:
-            continue
-    return None
+    """Parse local UTC-7 date/time strings into UTC epoch seconds."""
+    return parse_local_utc_minus_7_to_utc_ts(date_str, time_str)
 
 
 def canonical_event_key(row: Dict[str, str]) -> Tuple:
