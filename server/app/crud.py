@@ -5,7 +5,11 @@ from typing import Iterable, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from .models import Device, Event, ServerClock, GrowthData
-from .event_policy import ADJACENT_MERGE_GAP_SECONDS, MIN_CRIB_WEBHOOK_SLEEP_SECONDS
+from .event_policy import (
+    ADJACENT_MERGE_GAP_SECONDS,
+    MIN_CRIB_WEBHOOK_SLEEP_SECONDS,
+    intervals_mergeable_ordered,
+)
 
 
 def ensure_server_clock(session: Session) -> ServerClock:
@@ -305,6 +309,86 @@ def merge_adjacent_chain(
         if nxt.event_id == ev.event_id:
             return nxt
         ev = nxt
+
+
+def merge_adjacent_sorted_pair(
+    session: Session,
+    first: Event,
+    second: Event,
+    min_start_ts: int | None = None,
+) -> None:
+    """
+    Merge two sleep/feed rows that are consecutive in (start_ts, event_id) order.
+    Caller must ensure first.start_ts <= second.start_ts (or equal with first <= second by id).
+    No DB scans for predecessors; for bulk consolidation scripts only.
+    """
+    if first.type not in ("sleep", "feed") or second.type not in ("sleep", "feed"):
+        raise ValueError("merge_adjacent_sorted_pair: type must be sleep or feed")
+    if first.device_id != second.device_id or first.type != second.type:
+        raise ValueError("merge_adjacent_sorted_pair: device_id and type must match")
+    if first.deleted or second.deleted:
+        raise ValueError("merge_adjacent_sorted_pair: event deleted")
+    if not first.start_ts or not first.end_ts or not second.start_ts or not second.end_ts:
+        raise ValueError("merge_adjacent_sorted_pair: missing bounds")
+    if min_start_ts is not None:
+        if first.start_ts < min_start_ts or second.start_ts < min_start_ts:
+            raise ValueError("merge_adjacent_sorted_pair: below min_start_ts")
+    if not intervals_mergeable_ordered(
+        first.start_ts, first.end_ts, second.start_ts, second.end_ts
+    ):
+        raise ValueError("merge_adjacent_sorted_pair: intervals not mergeable")
+    if (first.start_ts, first.event_id) > (second.start_ts, second.event_id):
+        first, second = second, first
+    keep, drop = first, second
+    keep.start_ts = min(first.start_ts, second.start_ts)
+    keep.end_ts = max(first.end_ts, second.end_ts)
+    keep.updated_ts = int(time.time())
+    keep.version = keep.version + 1
+    keep.server_clock = next_clock(session)
+    session.add(keep)
+    drop.deleted = True
+    drop.updated_ts = keep.updated_ts
+    drop.version = drop.version + 1
+    drop.server_clock = next_clock(session)
+    session.add(drop)
+    session.commit()
+    session.refresh(keep)
+
+
+def try_merge_first_mergeable_pair_for_device_type(
+    session: Session,
+    device_id: str,
+    event_type: str,
+    min_start_ts: int | None,
+) -> bool:
+    """
+    Load sleep/feed rows for one device and type, ordered by start_ts, event_id.
+    If some consecutive pair is mergeable (gap<=60s or overlap), merge the first such pair and return True.
+    Otherwise return False. O(n) per call with no overlap table scan.
+    """
+    if event_type not in ("sleep", "feed"):
+        return False
+    conditions = [
+        Event.device_id == device_id,
+        Event.type == event_type,
+        Event.deleted == False,  # noqa: E712
+        Event.start_ts.isnot(None),
+        Event.end_ts.isnot(None),
+    ]
+    if min_start_ts is not None:
+        conditions.append(Event.start_ts >= min_start_ts)
+    stmt = (
+        select(Event)
+        .where(*conditions)
+        .order_by(Event.start_ts.asc(), Event.event_id.asc())
+    )
+    evs = list(session.scalars(stmt).all())
+    for i in range(len(evs) - 1):
+        a, b = evs[i], evs[i + 1]
+        if intervals_mergeable_ordered(a.start_ts, a.end_ts, b.start_ts, b.end_ts):
+            merge_adjacent_sorted_pair(session, a, b, min_start_ts=min_start_ts)
+            return True
+    return False
 
 
 def close_crib_webhook_sleep(session: Session, open_sleep: Event, end_ts: int) -> tuple[Event | None, str]:

@@ -6,6 +6,9 @@ or overlap. Keeps the earlier-start row, expands end_ts, soft-deletes the later 
 Only considers rows with start_ts >= 2026-01-01 00:00 UTC so older seed/import data is left
 unchanged. Live crib/sync merge behavior is unchanged (no cutoff there).
 
+Apply mode merges consecutive rows in (start_ts, event_id) order using a fast path (no per-merge
+overlap table scans). Same merge rules as dry-run / runtime merge_adjacent_chain.
+
 Run after backup. Typically run before delete_short_sleep_events.py.
 
 Usage:
@@ -36,7 +39,7 @@ def main() -> int:
         os.environ["TCB_DB_PATH"] = os.path.abspath(args.db)
 
     from sqlalchemy import or_
-    from server.app.crud import merge_adjacent_chain
+    from server.app.crud import try_merge_first_mergeable_pair_for_device_type
     from server.app.database import SessionLocal
     from server.app.event_policy import intervals_mergeable_ordered
     from server.app.models import Event
@@ -71,42 +74,16 @@ def main() -> int:
             print(f"dry-run: {n} merge pair(s) (start_ts >= {min_ts} UTC)")
             return 0
 
-        rounds = 0
+        # Per (device, type): merge consecutive sorted pairs until stable. Each step is O(n)
+        # for one query over that group; no expensive overlap scan (unlike merge_adjacent_chain).
+        groups = sorted(by_group.keys())
         total_merges = 0
-        while True:
-            evs = (
-                session.query(Event)
-                .filter(
-                    or_(Event.type == "sleep", Event.type == "feed"),
-                    Event.deleted == False,  # noqa: E712
-                    Event.start_ts.isnot(None),
-                    Event.end_ts.isnot(None),
-                    Event.start_ts >= min_ts,
-                )
-                .order_by(Event.device_id, Event.type, Event.start_ts)
-                .all()
-            )
-            if len(evs) < 2:
-                break
-            progressed = False
-            for ev in evs:
-                fresh = session.get(Event, ev.event_id)
-                if fresh is None or fresh.deleted:
-                    continue
-                before = fresh.event_id
-                merge_adjacent_chain(session, fresh, min_start_ts=min_ts)
-                gone = session.get(Event, before)
-                if gone is None or gone.deleted:
-                    progressed = True
-                    total_merges += 1
-                    break
-            rounds += 1
-            if not progressed:
-                break
-            if rounds > 10000:
-                print("Aborting: too many rounds", file=sys.stderr)
-                return 1
-        print(f"Done. rounds={rounds} merges={total_merges}")
+        for device_id, typ in groups:
+            while try_merge_first_mergeable_pair_for_device_type(
+                session, device_id, typ, min_ts
+            ):
+                total_merges += 1
+        print(f"Done. merges={total_merges}")
         return 0
     finally:
         session.close()
