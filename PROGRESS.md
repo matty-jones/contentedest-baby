@@ -1,5 +1,11 @@
 # Progress
 
+## 2026-04-13 — Timeline date picker and navigation icons
+
+**Change:** On the Timeline screen, tapping the formatted date (e.g. "Friday, 10th April") opens the Material3 `DatePickerDialog` with the current day selected, plus a "Today" action that jumps to the current date. Previous/next day controls use `IconButton` with `KeyboardArrowLeft` / `KeyboardArrowRight` (same pattern as Daily Log) instead of raw `<` / `>` text.
+
+**Verify:** `./gradlew :app:compileDebugKotlin` from `android/`.
+
 ## 2026-04-08 — Crib webhook sleep policy and adjacent merge
 
 **Goal:** Reduce Frigate/HA noise: ignore very short “sleep” segments from the crib webhook, merge sleep/feed fragments that are within 60s or overlap, and provide DB maintenance scripts.

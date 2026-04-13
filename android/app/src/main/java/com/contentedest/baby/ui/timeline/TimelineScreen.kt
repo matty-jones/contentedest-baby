@@ -23,6 +23,8 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TimePickerState
 import androidx.compose.runtime.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,10 +32,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.platform.LocalContext
+import java.time.Instant
 import com.contentedest.baby.data.local.EventEntity
 import com.contentedest.baby.timer.TimerStateStorage
 import com.contentedest.baby.timer.TimerBackgroundService
@@ -126,6 +130,7 @@ fun TimelineScreen(
 
     var showLivePicker by remember { mutableStateOf(false) }
     var activeLiveType by remember { mutableStateOf<EventType?>(null) }
+    var showDatePickerDialog by remember { mutableStateOf(false) }
     
     // Check for active timer state on screen load and restore if needed
     LaunchedEffect(Unit) {
@@ -165,23 +170,41 @@ fun TimelineScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+                .padding(horizontal = 4.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "<",
-                modifier = Modifier.clickable { onDateChanged(date.minusDays(1)) },
-                style = MaterialTheme.typography.titleLarge
-            )
+            IconButton(onClick = { onDateChanged(date.minusDays(1)) }) {
+                @Suppress("DEPRECATION")
+                Icon(
+                    imageVector = Icons.Filled.KeyboardArrowLeft,
+                    contentDescription = "Previous day"
+                )
+            }
             Text(
                 text = formatDate(date),
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { showDatePickerDialog = true },
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                textAlign = TextAlign.Center
             )
-            Text(
-                text = ">",
-                modifier = Modifier.clickable { onDateChanged(date.plusDays(1)) },
-                style = MaterialTheme.typography.titleLarge
+            IconButton(onClick = { onDateChanged(date.plusDays(1)) }) {
+                @Suppress("DEPRECATION")
+                Icon(
+                    imageVector = Icons.Filled.KeyboardArrowRight,
+                    contentDescription = "Next day"
+                )
+            }
+        }
+
+        if (showDatePickerDialog) {
+            TimelineDatePickerDialog(
+                initialDate = date,
+                onDateSelected = {
+                    onDateChanged(it)
+                    showDatePickerDialog = false
+                },
+                onDismiss = { showDatePickerDialog = false }
             )
         }
 
@@ -1011,6 +1034,55 @@ fun EventDetailsDialog(
             }
         }
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TimelineDatePickerDialog(
+    initialDate: LocalDate,
+    onDateSelected: (LocalDate) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val zone = ZoneId.systemDefault()
+    val initialMillis = remember(initialDate) {
+        initialDate.atStartOfDay(zone).toInstant().toEpochMilli()
+    }
+    val datePickerState = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
+
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        val selected = Instant.ofEpochMilli(millis).atZone(zone).toLocalDate()
+                        onDateSelected(selected)
+                    }
+                }
+            ) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    ) {
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(
+                    onClick = { onDateSelected(LocalDate.now(zone)) }
+                ) {
+                    Text("Today")
+                }
+            }
+            DatePicker(state = datePickerState)
+        }
+    }
 }
 
 // Helper functions
