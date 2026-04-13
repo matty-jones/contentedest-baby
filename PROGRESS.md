@@ -1,5 +1,19 @@
 # Progress
 
+## 2026-04-08 — Crib webhook sleep policy and adjacent merge
+
+**Goal:** Reduce Frigate/HA noise: ignore very short “sleep” segments from the crib webhook, merge sleep/feed fragments that are within 60s or overlap, and provide DB maintenance scripts.
+
+**Server behavior:** `app/event_policy.py` defines `MIN_CRIB_WEBHOOK_SLEEP_SECONDS` (300), `ADJACENT_MERGE_GAP_SECONDS` (60), and merge helpers. `close_crib_webhook_sleep` soft-deletes closed crib sleeps under 5 minutes; otherwise closes and runs `merge_adjacent_chain`. Sync push runs the same merge after upserting closed sleep or feed rows. Manual timeline / sync paths do not apply the 5-minute discard.
+
+**Webhook:** `POST /webhook/crib` returns `action: "discarded"` with the soft-deleted `event_id` when duration is under 5 minutes; see `CribWebhookResponse` in `app/schemas.py`.
+
+**Scripts (run against DB backup, consolidate before delete-short):** `server/scripts/consolidate_adjacent_events.py`, `server/scripts/delete_short_sleep_events.py`.
+
+**Tests:** `tests/test_event_policy.py` (merge rules); `tests/test_server.py` uses `httpx.ASGITransport` with `AsyncClient` (httpx 0.28+), and monkeypatches `time.time` for crib close vs discard.
+
+**Verify:** From `server/`, `PYTHONPATH=. pytest tests/test_event_policy.py tests/test_server.py`.
+
 ## 2026-04-08 — Snake timeline row connectors
 
 **Issue:** Long sleep (or any) events spanning multiple rows could draw the curved row-to-row connector on the wrong side (e.g. right on an R→L row where the white track turns left).

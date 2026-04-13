@@ -1,9 +1,11 @@
 from __future__ import annotations
+import time
 import uuid
 from typing import Iterable, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from .models import Device, Event, ServerClock, GrowthData
+from .event_policy import ADJACENT_MERGE_GAP_SECONDS, MIN_CRIB_WEBHOOK_SLEEP_SECONDS
 
 
 def ensure_server_clock(session: Session) -> ServerClock:
@@ -73,9 +75,10 @@ def resolve_event(existing: Event | None, incoming: Event) -> Tuple[Event, bool]
 
 
 def upsert_events(session: Session, incoming_events: Iterable[Event]) -> Tuple[list[Event], int]:
+    incoming_list = sorted(incoming_events, key=lambda e: (e.start_ts or 0, e.event_id or ""))
     applied: list[Event] = []
     sc_before = get_clock(session)
-    for inc in incoming_events:
+    for inc in incoming_list:
         existing = session.get(Event, inc.event_id)
         winner, changed = resolve_event(existing, inc)
         if changed:
@@ -84,7 +87,16 @@ def upsert_events(session: Session, incoming_events: Iterable[Event]) -> Tuple[l
             session.add(winner)
             session.commit()
             session.refresh(winner)
-        applied.append(winner)
+        out = winner
+        if (
+            changed
+            and winner.type in ("sleep", "feed")
+            and winner.end_ts is not None
+            and winner.start_ts is not None
+            and not winner.deleted
+        ):
+            out = maybe_merge_after_sync_upsert(session, winner)
+        applied.append(out)
     new_clock = get_clock(session)
     if new_clock < sc_before:
         new_clock = sc_before
@@ -187,5 +199,122 @@ def close_sleep(session: Session, event: Event, end_ts: int) -> Event:
     session.commit()
     session.refresh(event)
     return event
+
+
+def _soft_delete_event(session: Session, event: Event) -> None:
+    now_ts = int(time.time())
+    event.deleted = True
+    event.updated_ts = now_ts
+    event.version = event.version + 1
+    event.server_clock = next_clock(session)
+    session.add(event)
+    session.commit()
+    session.refresh(event)
+
+
+def _find_merge_predecessor(session: Session, curr: Event) -> Event | None:
+    """Find a prior sleep/feed segment to merge with curr (gap <= 60s or overlap)."""
+    if curr.type not in ("sleep", "feed") or not curr.start_ts or not curr.end_ts:
+        return None
+    stmt = (
+        select(Event)
+        .where(
+            Event.device_id == curr.device_id,
+            Event.type == curr.type,
+            Event.deleted == False,  # noqa: E712
+            Event.end_ts.isnot(None),
+            Event.start_ts.isnot(None),
+            Event.event_id != curr.event_id,
+            Event.end_ts <= curr.start_ts,
+        )
+        .order_by(Event.end_ts.desc())
+    )
+    for prev in session.scalars(stmt).all():
+        gap = curr.start_ts - prev.end_ts
+        if 0 <= gap <= ADJACENT_MERGE_GAP_SECONDS:
+            return prev
+    stmt2 = (
+        select(Event)
+        .where(
+            Event.device_id == curr.device_id,
+            Event.type == curr.type,
+            Event.deleted == False,  # noqa: E712
+            Event.end_ts.isnot(None),
+            Event.start_ts.isnot(None),
+            Event.event_id != curr.event_id,
+            Event.start_ts < curr.end_ts,
+            Event.end_ts > curr.start_ts,
+        )
+        .order_by(Event.start_ts.asc())
+    )
+    return session.scalars(stmt2).first()
+
+
+def _try_single_merge_backward(session: Session, curr: Event) -> Event:
+    """Merge curr with one predecessor if eligible. Returns surviving row."""
+    if curr.type not in ("sleep", "feed") or curr.deleted:
+        return curr
+    if not curr.start_ts or not curr.end_ts:
+        return curr
+    prev = _find_merge_predecessor(session, curr)
+    if prev is None:
+        return curr
+    if prev.start_ts <= curr.start_ts:
+        keep, drop = prev, curr
+    else:
+        keep, drop = curr, prev
+    keep.start_ts = min(prev.start_ts, curr.start_ts)
+    keep.end_ts = max(prev.end_ts, curr.end_ts)
+    keep.updated_ts = int(time.time())
+    keep.version = keep.version + 1
+    keep.server_clock = next_clock(session)
+    session.add(keep)
+    drop.deleted = True
+    drop.updated_ts = keep.updated_ts
+    drop.version = drop.version + 1
+    drop.server_clock = next_clock(session)
+    session.add(drop)
+    session.commit()
+    session.refresh(keep)
+    return keep
+
+
+def merge_adjacent_chain(session: Session, start: Event) -> Event:
+    """Repeatedly merge backward until stable (handles 1h + gap + 1h + gap + ...)."""
+    ev = start
+    while True:
+        nxt = _try_single_merge_backward(session, ev)
+        if nxt.event_id == ev.event_id:
+            return nxt
+        ev = nxt
+
+
+def close_crib_webhook_sleep(session: Session, open_sleep: Event, end_ts: int) -> tuple[Event | None, str]:
+    """
+    Close open crib sleep. If duration < 5 minutes, soft-delete and return (None, 'discarded').
+    Otherwise merge with adjacent segment if within 60s, return (surviving_event, 'closed').
+    """
+    open_sleep.end_ts = end_ts
+    open_sleep.updated_ts = end_ts
+    open_sleep.version += 1
+    duration = end_ts - open_sleep.start_ts
+    if duration < MIN_CRIB_WEBHOOK_SLEEP_SECONDS:
+        _soft_delete_event(session, open_sleep)
+        return None, "discarded"
+    open_sleep.server_clock = next_clock(session)
+    session.add(open_sleep)
+    session.commit()
+    session.refresh(open_sleep)
+    merged = merge_adjacent_chain(session, open_sleep)
+    return merged, "closed"
+
+
+def maybe_merge_after_sync_upsert(session: Session, ev: Event) -> Event:
+    """After sync push applies a closed sleep/feed row, merge with neighbors if needed."""
+    if ev.type not in ("sleep", "feed") or ev.deleted:
+        return ev
+    if not ev.start_ts or not ev.end_ts:
+        return ev
+    return merge_adjacent_chain(session, ev)
 
 

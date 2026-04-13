@@ -219,8 +219,12 @@ def webhook_crib(
         open_sleep = crud.get_open_sleep(db, device_id)
         if not open_sleep:
             return CribWebhookResponse(action="no_open_sleep", event_id=None)
-        event = crud.close_sleep(db, open_sleep, now_ts)
-        return CribWebhookResponse(action="closed", event_id=event.event_id)
+        discarded_id = open_sleep.event_id
+        result, action = crud.close_crib_webhook_sleep(db, open_sleep, now_ts)
+        if action == "discarded":
+            return CribWebhookResponse(action="discarded", event_id=discarded_id)
+        assert result is not None
+        return CribWebhookResponse(action="closed", event_id=result.event_id)
 
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid state")
 

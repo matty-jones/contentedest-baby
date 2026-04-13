@@ -83,7 +83,7 @@ class CribWebhookPayload(BaseModel):
 
 
 class CribWebhookResponse(BaseModel):
-    action: Literal["created", "already_recording", "closed", "no_open_sleep"]
+    action: Literal["created", "already_recording", "closed", "no_open_sleep", "discarded"]
     event_id: Optional[str] = None
 
 

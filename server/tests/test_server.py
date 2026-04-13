@@ -2,22 +2,24 @@ import os
 import time
 import uuid
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 from app.main import app
 
 
 pytestmark = pytest.mark.asyncio
 
+_TEST_TRANSPORT = ASGITransport(app=app)
+
 
 async def test_healthz():
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=_TEST_TRANSPORT, base_url="http://test") as ac:
         resp = await ac.get("/healthz")
         assert resp.status_code == 200
         assert resp.json()["status"] == "ok"
 
 
 async def test_pair_and_sync_flow(monkeypatch, tmp_path):
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=_TEST_TRANSPORT, base_url="http://test") as ac:
         device_id = f"dev-{uuid.uuid4()}"
         r = await ac.post(
             "/pair",
@@ -72,7 +74,7 @@ async def test_pair_and_sync_flow(monkeypatch, tmp_path):
 
 async def test_webhook_occupied_creates_then_idempotent():
     device_id = f"webhook-test-{uuid.uuid4()}"
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=_TEST_TRANSPORT, base_url="http://test") as ac:
         r1 = await ac.post("/webhook/crib", json={"state": "occupied", "device_id": device_id})
         assert r1.status_code == 200
         data1 = r1.json()
@@ -87,9 +89,18 @@ async def test_webhook_occupied_creates_then_idempotent():
         assert data2["event_id"] == event_id
 
 
-async def test_webhook_empty_closes_then_idempotent():
+async def test_webhook_empty_closes_then_idempotent(monkeypatch):
+    """Advance wall clock by 400s between occupied and empty so duration exceeds 5 min discard."""
+    t = [1_700_000_000]
+
+    def fake_time():
+        r = t[0]
+        t[0] += 400
+        return r
+
+    monkeypatch.setattr(time, "time", fake_time)
     device_id = f"webhook-test-{uuid.uuid4()}"
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=_TEST_TRANSPORT, base_url="http://test") as ac:
         await ac.post("/webhook/crib", json={"state": "occupied", "device_id": device_id})
         r1 = await ac.post("/webhook/crib", json={"state": "empty", "device_id": device_id})
         assert r1.status_code == 200
@@ -103,8 +114,26 @@ async def test_webhook_empty_closes_then_idempotent():
         assert data2["action"] == "no_open_sleep"
 
 
+async def test_webhook_short_sleep_discarded(monkeypatch):
+    t = [1_800_000_000]
+
+    def fake_time():
+        r = t[0]
+        t[0] += 60
+        return r
+
+    monkeypatch.setattr(time, "time", fake_time)
+    device_id = f"webhook-test-{uuid.uuid4()}"
+    async with AsyncClient(transport=_TEST_TRANSPORT, base_url="http://test") as ac:
+        await ac.post("/webhook/crib", json={"state": "occupied", "device_id": device_id})
+        r1 = await ac.post("/webhook/crib", json={"state": "empty", "device_id": device_id})
+        assert r1.status_code == 200
+        assert r1.json()["action"] == "discarded"
+        assert r1.json()["event_id"] is not None
+
+
 async def test_webhook_empty_no_open_sleep():
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=_TEST_TRANSPORT, base_url="http://test") as ac:
         r = await ac.post(
             "/webhook/crib",
             json={"state": "empty", "device_id": "nonexistent-device-no-open-sleep"},
@@ -115,7 +144,7 @@ async def test_webhook_empty_no_open_sleep():
 
 async def test_webhook_uses_default_device_id(monkeypatch):
     monkeypatch.delenv("CRIB_WEBHOOK_DEVICE_ID", raising=False)
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=_TEST_TRANSPORT, base_url="http://test") as ac:
         await ac.post("/webhook/crib", json={"state": "empty"})
         r1 = await ac.post("/webhook/crib", json={"state": "occupied"})
         assert r1.status_code == 200
@@ -132,7 +161,7 @@ async def test_webhook_uses_default_device_id(monkeypatch):
 
 async def test_webhook_validation_invalid_state():
     device_id = f"webhook-test-{uuid.uuid4()}"
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=_TEST_TRANSPORT, base_url="http://test") as ac:
         r = await ac.post(
             "/webhook/crib",
             json={"state": "invalid", "device_id": device_id},
@@ -144,7 +173,7 @@ async def test_webhook_auth_required_when_secret_set(monkeypatch):
     device_id = f"webhook-test-{uuid.uuid4()}"
     monkeypatch.setitem(os.environ, "CRIB_WEBHOOK_SECRET", "test-secret")
     try:
-        async with AsyncClient(app=app, base_url="http://test") as ac:
+        async with AsyncClient(transport=_TEST_TRANSPORT, base_url="http://test") as ac:
             r = await ac.post(
                 "/webhook/crib",
                 json={"state": "occupied", "device_id": device_id},
