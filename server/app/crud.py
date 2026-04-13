@@ -212,9 +212,13 @@ def _soft_delete_event(session: Session, event: Event) -> None:
     session.refresh(event)
 
 
-def _find_merge_predecessor(session: Session, curr: Event) -> Event | None:
+def _find_merge_predecessor(
+    session: Session, curr: Event, min_start_ts: int | None = None
+) -> Event | None:
     """Find a prior sleep/feed segment to merge with curr (gap <= 60s or overlap)."""
     if curr.type not in ("sleep", "feed") or not curr.start_ts or not curr.end_ts:
+        return None
+    if min_start_ts is not None and curr.start_ts < min_start_ts:
         return None
     stmt = (
         select(Event)
@@ -226,6 +230,11 @@ def _find_merge_predecessor(session: Session, curr: Event) -> Event | None:
             Event.start_ts.isnot(None),
             Event.event_id != curr.event_id,
             Event.end_ts <= curr.start_ts,
+            *(
+                (Event.start_ts >= min_start_ts,)
+                if min_start_ts is not None
+                else ()
+            ),
         )
         .order_by(Event.end_ts.desc())
     )
@@ -244,19 +253,26 @@ def _find_merge_predecessor(session: Session, curr: Event) -> Event | None:
             Event.event_id != curr.event_id,
             Event.start_ts < curr.end_ts,
             Event.end_ts > curr.start_ts,
+            *(
+                (Event.start_ts >= min_start_ts,)
+                if min_start_ts is not None
+                else ()
+            ),
         )
         .order_by(Event.start_ts.asc())
     )
     return session.scalars(stmt2).first()
 
 
-def _try_single_merge_backward(session: Session, curr: Event) -> Event:
+def _try_single_merge_backward(
+    session: Session, curr: Event, min_start_ts: int | None = None
+) -> Event:
     """Merge curr with one predecessor if eligible. Returns surviving row."""
     if curr.type not in ("sleep", "feed") or curr.deleted:
         return curr
     if not curr.start_ts or not curr.end_ts:
         return curr
-    prev = _find_merge_predecessor(session, curr)
+    prev = _find_merge_predecessor(session, curr, min_start_ts=min_start_ts)
     if prev is None:
         return curr
     if prev.start_ts <= curr.start_ts:
@@ -279,11 +295,13 @@ def _try_single_merge_backward(session: Session, curr: Event) -> Event:
     return keep
 
 
-def merge_adjacent_chain(session: Session, start: Event) -> Event:
+def merge_adjacent_chain(
+    session: Session, start: Event, min_start_ts: int | None = None
+) -> Event:
     """Repeatedly merge backward until stable (handles 1h + gap + 1h + gap + ...)."""
     ev = start
     while True:
-        nxt = _try_single_merge_backward(session, ev)
+        nxt = _try_single_merge_backward(session, ev, min_start_ts=min_start_ts)
         if nxt.event_id == ev.event_id:
             return nxt
         ev = nxt

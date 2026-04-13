@@ -3,6 +3,9 @@
 Merge sleep and feed rows on the same device when consecutive segments have gap <= 60s
 or overlap. Keeps the earlier-start row, expands end_ts, soft-deletes the later row.
 
+Only considers rows with start_ts >= 2026-01-01 00:00 UTC so older seed/import data is left
+unchanged. Live crib/sync merge behavior is unchanged (no cutoff there).
+
 Run after backup. Typically run before delete_short_sleep_events.py.
 
 Usage:
@@ -14,11 +17,15 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from datetime import datetime, timezone
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_SCRIPT_DIR, "..", ".."))
 if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT))
+    sys.path.insert(0, _REPO_ROOT)
+
+# Epoch for 2026-01-01 00:00:00 UTC; only these rows are eligible for this script.
+CONSOLIDATION_MIN_START_TS = int(datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp())
 
 
 def main() -> int:
@@ -35,6 +42,7 @@ def main() -> int:
     from server.app.event_policy import intervals_mergeable_ordered
     from server.app.models import Event
 
+    min_ts = CONSOLIDATION_MIN_START_TS
     session = SessionLocal()
     try:
         evs = (
@@ -44,6 +52,7 @@ def main() -> int:
                 Event.deleted == False,  # noqa: E712
                 Event.start_ts.isnot(None),
                 Event.end_ts.isnot(None),
+                Event.start_ts >= min_ts,
             )
             .order_by(Event.device_id, Event.type, Event.start_ts)
             .all()
@@ -60,7 +69,7 @@ def main() -> int:
                     if intervals_mergeable_ordered(a.start_ts, a.end_ts, b.start_ts, b.end_ts):
                         print(f"would_merge device={a.device_id} type={a.type} keep={a.event_id} drop={b.event_id}")
                         n += 1
-            print(f"dry-run: {n} merge pair(s)")
+            print(f"dry-run: {n} merge pair(s) (start_ts >= {min_ts} UTC)")
             return 0
 
         rounds = 0
@@ -73,6 +82,7 @@ def main() -> int:
                     Event.deleted == False,  # noqa: E712
                     Event.start_ts.isnot(None),
                     Event.end_ts.isnot(None),
+                    Event.start_ts >= min_ts,
                 )
                 .order_by(Event.device_id, Event.type, Event.start_ts)
                 .all()
@@ -85,7 +95,7 @@ def main() -> int:
                 if fresh is None or fresh.deleted:
                     continue
                 before = fresh.event_id
-                merge_adjacent_chain(session, fresh)
+                merge_adjacent_chain(session, fresh, min_start_ts=min_ts)
                 gone = session.get(Event, before)
                 if gone is None or gone.deleted:
                     progressed = True

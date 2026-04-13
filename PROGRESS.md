@@ -8,7 +8,7 @@
 
 **Webhook:** `POST /webhook/crib` returns `action: "discarded"` with the soft-deleted `event_id` when duration is under 5 minutes; see `CribWebhookResponse` in `app/schemas.py`.
 
-**Scripts (run against DB backup, consolidate before delete-short):** `server/scripts/consolidate_adjacent_events.py`, `server/scripts/delete_short_sleep_events.py`.
+**Scripts (run against DB backup, consolidate before delete-short):** `server/scripts/consolidate_adjacent_events.py` (only rows with `start_ts` on or after 2026-01-01 UTC; live crib/sync merge has no such cutoff), `server/scripts/delete_short_sleep_events.py`.
 
 **Tests:** `tests/test_event_policy.py` (merge rules); `tests/test_server.py` uses `httpx.ASGITransport` with `AsyncClient` (httpx 0.28+), and monkeypatches `time.time` for crib close vs discard.
 
