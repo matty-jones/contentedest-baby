@@ -1,16 +1,16 @@
 # Progress
 
-## 2026-04-14 — Release script: patch `updates.py`; app/server 37 / 1.6.0
+## 2026-04-14 — Release script: patch `updates.py`; baseline 36 / 1.5.6 before bump to 1.6.0 (37)
 
 **Cause:** After the server refactor, `GET /app/update` reads `version_code` / `version_name` from `server/app/routers/updates.py`, but `./release_application` still ran `sed` on `server/app/main.py`, which no longer contains those fields. New APKs were copied to `server/apks/latest.apk` while the API kept advertising the old version, so clients never saw an update.
 
-**Change:** `release_application` now updates `SERVER_UPDATES_PY` (`server/app/routers/updates.py`) via `update_server_updates_py`. Repo aligned to **versionCode 37**, **versionName 1.6.0** in both `android/app/build.gradle.kts` and `updates.py`.
+**Change:** `release_application` now updates `SERVER_UPDATES_PY` (`server/app/routers/updates.py`) via `update_server_updates_py`.
 
-**One-time repair on deployed host:** Pull or copy the updated `server/app/routers/updates.py` (or edit in place: `version_code=37`, `version_name="1.6.0"`), ensure `server/apks/latest.apk` is the matching 1.6.0 build, set `BASE_URL` if needed, then `sudo systemctl restart contentedest-baby.service` (or your process manager). Verify: `curl -s http://HOST:8005/app/update | jq` shows 37 and a `download_url` reachable from devices.
+**To ship 1.6.0 (37) via the script:** Keep `build.gradle.kts` and `updates.py` at **36 / 1.5.6**, then run `./release_application` with **no flags** (default = semver *minor* bump: 1.5.6 → 1.6.0, versionCode 36 → 37). **Do not** pass `--minor`: in this script that flag means *patch* bump (1.5.6 → 1.5.7), not semver minor.
 
-**Future releases:** Run `./release_application` from the current repo version; it increments `versionCode` and bumps `versionName` per flags, then patches `updates.py`. You do **not** need to downgrade Gradle to trick the bump; only use a lower version in `build.gradle.kts` if you intentionally want the *script* to perform `N -> N+1` again (e.g. after a mistaken manual bump).
+**One-time repair on deployed host:** After release, deployed `updates.py` should show `version_code=37`, `version_name="1.6.0"`; `server/apks/latest.apk` must be that build; restart the service. Verify: `curl -s http://HOST:8005/app/update`.
 
-**Verify:** `source .venv/bin/activate && PYTHONPATH=server pytest -q server/tests`. Rebuild the release APK when you want a binary that matches 37: `cd android && ./gradlew assembleRelease`, then copy to `server/apks/latest.apk` on the server.
+**Verify:** `source .venv/bin/activate && PYTHONPATH=server pytest -q server/tests`.
 
 ## 2026-04-14 — Track `WordRepository.kt`: fix `.gitignore` `data` rule
 
