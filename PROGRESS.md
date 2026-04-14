@@ -16,6 +16,8 @@
 
 **Change:** On the Timeline screen, tapping the formatted date (e.g. "Friday, 10th April") opens the Material3 `DatePickerDialog` with the current day selected, plus a "Today" action that jumps to the current date. Previous/next day controls use `IconButton` with `KeyboardArrowLeft` / `KeyboardArrowRight` (same pattern as Daily Log) instead of raw `<` / `>` text.
 
+**Timezone:** Material3 `DatePicker` uses UTC midnight for `selectedDateMillis`. Initial millis and OK handling use `ZoneOffset.UTC` when converting to/from `LocalDate` so regions behind UTC (e.g. GMT-7) do not get a one-day shift. `GrowthDatePickerDialog` OK handling uses the same UTC conversion.
+
 **Verify:** `./gradlew :app:compileDebugKotlin` from `android/`.
 
 ## 2026-04-13 — Refactor Wave 1 baseline

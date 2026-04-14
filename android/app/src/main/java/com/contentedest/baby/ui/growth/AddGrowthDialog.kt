@@ -14,6 +14,7 @@ import com.contentedest.baby.data.repo.GrowthRepository
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -262,7 +263,7 @@ fun GrowthDatePickerDialog(
                 onClick = {
                     datePickerState.selectedDateMillis?.let {
                         val date = Instant.ofEpochMilli(it)
-                            .atZone(ZoneId.systemDefault())
+                            .atZone(ZoneOffset.UTC)
                             .toLocalDate()
                         onDateSelected(date)
                     }
