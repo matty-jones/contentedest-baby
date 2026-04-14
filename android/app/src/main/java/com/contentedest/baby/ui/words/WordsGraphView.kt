@@ -33,8 +33,32 @@ import com.patrykandpatrick.vico.core.cartesian.data.CartesianValueFormatter
 import com.patrykandpatrick.vico.core.cartesian.data.LineCartesianLayerModel
 import com.patrykandpatrick.vico.core.cartesian.layer.LineCartesianLayer
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+
+private fun buildDailyCumulativeSeries(
+    sortedWords: List<BabyWordEntity>,
+    zone: ZoneId
+): List<Pair<LocalDate, Float>> {
+    if (sortedWords.isEmpty()) return emptyList()
+    val firstDay = Instant.ofEpochSecond(sortedWords.first().ts).atZone(zone).toLocalDate()
+    val lastWordDay = Instant.ofEpochSecond(sortedWords.last().ts).atZone(zone).toLocalDate()
+    val today = LocalDate.now(zone)
+    val endDay = maxOf(lastWordDay, today)
+    var wordIdx = 0
+    val result = mutableListOf<Pair<LocalDate, Float>>()
+    var d = firstDay
+    while (!d.isAfter(endDay)) {
+        val nextDayStart = d.plusDays(1).atStartOfDay(zone).toEpochSecond()
+        while (wordIdx < sortedWords.size && sortedWords[wordIdx].ts < nextDayStart) {
+            wordIdx++
+        }
+        result.add(d to wordIdx.toFloat())
+        d = d.plusDays(1)
+    }
+    return result
+}
 
 @Composable
 fun WordsGraphView(
@@ -43,7 +67,11 @@ fun WordsGraphView(
     modifier: Modifier = Modifier
 ) {
     val sorted = remember(words) { words.sortedBy { it.ts } }
-    if (sorted.isEmpty()) {
+    val dailySeries = remember(sorted) {
+        buildDailyCumulativeSeries(sorted, ZoneId.systemDefault())
+    }
+
+    if (dailySeries.isEmpty()) {
         Box(
             modifier = modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
@@ -57,9 +85,8 @@ fun WordsGraphView(
         return
     }
 
-    val (yMin, yMax, tickStep) = remember(sorted) {
-        val n = sorted.size
-        val maxY = n.toDouble()
+    val (yMin, yMax, tickStep) = remember(dailySeries) {
+        val maxY = dailySeries.maxOf { it.second }.toDouble()
         val padding = (maxY * 0.1).coerceAtLeast(1.0)
         val minY = 0.0
         val maxWithPad = maxY + padding
@@ -87,10 +114,8 @@ fun WordsGraphView(
         label = rememberTextComponent(color = Color.White, textSize = 12.sp),
         valueFormatter = CartesianValueFormatter { _, x, _ ->
             val index = x.toInt()
-            if (index >= 0 && index < sorted.size) {
-                val ts = sorted[index].ts
-                val date = Instant.ofEpochSecond(ts).atZone(ZoneId.systemDefault()).toLocalDate()
-                date.format(dateFmt)
+            if (index >= 0 && index < dailySeries.size) {
+                dailySeries[index].first.format(dateFmt)
             } else {
                 ""
             }
@@ -117,9 +142,9 @@ fun WordsGraphView(
         bottomAxis = bottomAxis
     )
 
-    val chartModel = remember(sorted) {
-        val entries = sorted.mapIndexed { index, _ ->
-            LineCartesianLayerModel.Entry(index.toFloat(), (index + 1).toFloat())
+    val chartModel = remember(dailySeries) {
+        val entries = dailySeries.mapIndexed { index, pair ->
+            LineCartesianLayerModel.Entry(index.toFloat(), pair.second)
         }
         val model = LineCartesianLayerModel(listOf(entries))
         CartesianChartModel(models = listOf(model))

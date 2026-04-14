@@ -1,5 +1,11 @@
 # Progress
 
+## 2026-04-14 — Words UI: title-case labels and date-based vocabulary graph
+
+**Change:** Word cards use `String.displayWordTitleCase()` (locale-aware first-character title case via `WordDisplay.kt`). `WordsGraphView` no longer plots one point per word index; it builds one point per **calendar day** from the first word’s local date through `max(last word date, today)`, with **y = cumulative count** of words whose `ts` falls before the start of the next day (end-of-day total). Horizontal segments appear on days with no new words; steps occur when new words are logged.
+
+**Verify:** From `android/`, `./gradlew :app:compileDebugKotlin`.
+
 ## 2026-04-14 — Single default SQLite path: `server/db/data.db`
 
 **Change:** `server/app/database.py` default `DB_PATH` is now `server/db/data.db` (was `server/data.db`). Scripts that embedded `server/data.db` as a fallback (`find_duplicate_sleep_events.py`, `audit_sleep_duplicates.py`) use the same path. README examples updated. Dockerfile default `TCB_DB_PATH` aligned with docker-compose (`/app/server/db/data.db`). Removed `server/db` from `.gitignore` so the directory can be tracked; `*.db*` still ignores SQLite files.

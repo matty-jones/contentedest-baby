@@ -56,7 +56,7 @@ fun WordsListView(
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
                 ) {
                     Text(
-                        text = entry.word.trim().ifEmpty { "—" },
+                        text = entry.word.displayWordTitleCase().ifEmpty { "—" },
                         style = MaterialTheme.typography.titleSmall,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
