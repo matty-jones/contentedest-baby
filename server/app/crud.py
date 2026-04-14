@@ -11,6 +11,39 @@ from .event_policy import (
     intervals_mergeable_ordered,
 )
 
+_EVENT_UPSERT_FIELDS = (
+    "type",
+    "payload",
+    "start_ts",
+    "end_ts",
+    "ts",
+    "created_ts",
+    "updated_ts",
+    "version",
+    "deleted",
+    "device_id",
+)
+_GROWTH_UPSERT_FIELDS = (
+    "device_id",
+    "category",
+    "value",
+    "unit",
+    "ts",
+    "created_ts",
+    "updated_ts",
+    "version",
+    "deleted",
+)
+
+
+def _incoming_wins(existing_device_ts_version: tuple, incoming_device_ts_version: tuple) -> bool:
+    return incoming_device_ts_version > existing_device_ts_version
+
+
+def _copy_fields(target: object, source: object, fields: tuple[str, ...]) -> None:
+    for field in fields:
+        setattr(target, field, getattr(source, field))
+
 
 def ensure_server_clock(session: Session) -> ServerClock:
     sc = session.get(ServerClock, 1)
@@ -60,20 +93,10 @@ def select_events_since(session: Session, since_clock: int) -> list[Event]:
 def resolve_event(existing: Event | None, incoming: Event) -> Tuple[Event, bool]:
     if existing is None:
         return incoming, True
-    # Compare by (version, updated_ts, device_id)
-    a = (existing.version, existing.updated_ts, existing.device_id)
-    b = (incoming.version, incoming.updated_ts, incoming.device_id)
-    if b > a:
-        existing.type = incoming.type
-        existing.payload = incoming.payload
-        existing.start_ts = incoming.start_ts
-        existing.end_ts = incoming.end_ts
-        existing.ts = incoming.ts
-        existing.created_ts = incoming.created_ts
-        existing.updated_ts = incoming.updated_ts
-        existing.version = incoming.version
-        existing.deleted = incoming.deleted
-        existing.device_id = incoming.device_id
+    existing_key = (existing.version, existing.updated_ts, existing.device_id)
+    incoming_key = (incoming.version, incoming.updated_ts, incoming.device_id)
+    if _incoming_wins(existing_key, incoming_key):
+        _copy_fields(existing, incoming, _EVENT_UPSERT_FIELDS)
         return existing, True
     return existing, False
 
@@ -110,19 +133,10 @@ def upsert_events(session: Session, incoming_events: Iterable[Event]) -> Tuple[l
 def resolve_growth_data(existing: GrowthData | None, incoming: GrowthData) -> Tuple[GrowthData, bool]:
     if existing is None:
         return incoming, True
-    # Compare by (version, updated_ts, device_id)
-    a = (existing.version, existing.updated_ts, existing.device_id)
-    b = (incoming.version, incoming.updated_ts, incoming.device_id)
-    if b > a:
-        existing.device_id = incoming.device_id
-        existing.category = incoming.category
-        existing.value = incoming.value
-        existing.unit = incoming.unit
-        existing.ts = incoming.ts
-        existing.created_ts = incoming.created_ts
-        existing.updated_ts = incoming.updated_ts
-        existing.version = incoming.version
-        existing.deleted = incoming.deleted
+    existing_key = (existing.version, existing.updated_ts, existing.device_id)
+    incoming_key = (incoming.version, incoming.updated_ts, incoming.device_id)
+    if _incoming_wins(existing_key, incoming_key):
+        _copy_fields(existing, incoming, _GROWTH_UPSERT_FIELDS)
         return existing, True
     return existing, False
 

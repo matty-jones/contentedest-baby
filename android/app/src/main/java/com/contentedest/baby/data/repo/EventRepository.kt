@@ -79,7 +79,7 @@ class EventRepository(
         id
     }
 
-    suspend fun startFeed(nowUtc: Long, deviceId: String, mode: com.contentedest.baby.data.local.FeedMode, note: String? = null): String = withContext(Dispatchers.IO) {
+    suspend fun startFeed(nowUtc: Long, deviceId: String, mode: FeedMode, note: String? = null): String = withContext(Dispatchers.IO) {
         val id = UUID.randomUUID().toString()
         val event = EventEntity(
             event_id = id,
@@ -94,7 +94,16 @@ class EventRepository(
             note = note
         )
         eventsDao.upsertEvent(event)
-        eventsDao.upsertSegments(listOf(com.contentedest.baby.data.local.FeedSegmentEntity(event_id = id, side = com.contentedest.baby.data.local.BreastSide.left, start_ts = nowUtc, end_ts = nowUtc)))
+        eventsDao.upsertSegments(
+            listOf(
+                FeedSegmentEntity(
+                    event_id = id,
+                    side = BreastSide.left,
+                    start_ts = nowUtc,
+                    end_ts = nowUtc
+                )
+            )
+        )
         id
     }
 
@@ -281,7 +290,6 @@ class EventRepository(
         }
     }
 
-    // Convert EventEntity to EventDto for API
     private fun EventEntity.toDto(): EventDto {
         val payloadMap: Map<String, Any>? = when (type) {
             EventType.feed -> {
@@ -302,7 +310,7 @@ class EventRepository(
         return EventDto(
             eventId = event_id,
             type = type.name,
-            details = details,  // Include details field
+            details = details,
             payload = payloadMap,
             startTs = start_ts,
             endTs = end_ts,
@@ -315,68 +323,19 @@ class EventRepository(
         )
     }
 
-    // Convert EventDto to EventEntity for local storage
     private fun EventDto.toEntity(): EventEntity {
-        // Parse payload Map<String, Any> to extract fields
         val payloadMap = payload ?: emptyMap()
-
-        // Extract values from payload map and details field - handle both new format and legacy server format
-        val feedMode = try {
-            // Try new format first
-            (payloadMap["mode"] as? String)?.let { FeedMode.valueOf(it) }
-                ?: // Try details field from server
-                details?.let { detailsValue ->
-                    when {
-                        detailsValue.contains("L&R") -> FeedMode.breast
-                        detailsValue.contains("Bottle") -> FeedMode.bottle
-                        detailsValue.contains("Solids") -> FeedMode.solids
-                        else -> null
-                    }
-                }
-                ?: // Try legacy server format - extract from payload
-                (payloadMap["details"] as? String)?.let { details ->
-                    when {
-                        details.contains("L&R") -> FeedMode.breast
-                        details.contains("Bottle") -> FeedMode.bottle
-                        details.contains("Solids") -> FeedMode.solids
-                        else -> null
-                    }
-                }
-        } catch (e: Exception) { null }
-
-        val bottleAmount = try {
-            when (val amount = payloadMap["bottle_amount_ml"]) {
-                is Number -> amount.toInt()
-                is String -> amount.toIntOrNull()
-                else -> null
-            }
-        } catch (e: Exception) { null }
-
-        val solidsAmount = try {
-            when (val amount = payloadMap["solids_amount"]) {
-                is Number -> amount.toInt()
-                is String -> amount.toIntOrNull()
-                else -> null
-            }
-        } catch (e: Exception) { null }
-
-        val nappyType = try {
-            // Try new format first
-            (payloadMap["nappy_type"] as? String)
-                ?: // Try details field from server
-                details
-                ?: // Try legacy server format
-                (payloadMap["details"] as? String)
-        } catch (e: Exception) { null }
-
-        // For feed events, use start_ts as the primary timestamp if ts is null
+        val feedMode = parseFeedMode(payloadMap, details)
+        val bottleAmount = payloadNumberToInt(payloadMap, "bottle_amount_ml")
+        val solidsAmount = payloadNumberToInt(payloadMap, "solids_amount")
+        val nappyType = (payloadMap["nappy_type"] as? String) ?: details ?: (payloadMap["details"] as? String)
         val primaryTs = if (type == "feed" && ts == null) startTs else ts
 
         return EventEntity(
             event_id = eventId,
             type = EventType.valueOf(type),
-            details = details,  // Include details field
-            payload = payloadMap.takeIf { it.isNotEmpty() }?.toString(), // Convert Map to String
+            details = details,
+            payload = payloadMap.takeIf { it.isNotEmpty() }?.toString(),
             start_ts = startTs,
             end_ts = endTs,
             ts = primaryTs,
@@ -519,6 +478,31 @@ class EventRepository(
             }
         }
         eventsDao.upsertEvent(updatedEvent)
+    }
+
+    private fun parseFeedMode(payloadMap: Map<String, Any>, details: String?): FeedMode? {
+        val explicitMode = (payloadMap["mode"] as? String)?.let {
+            runCatching { FeedMode.valueOf(it) }.getOrNull()
+        }
+        if (explicitMode != null) {
+            return explicitMode
+        }
+
+        val detailsCandidate = details ?: (payloadMap["details"] as? String) ?: return null
+        return when {
+            detailsCandidate.contains("L&R") -> FeedMode.breast
+            detailsCandidate.contains("Bottle") -> FeedMode.bottle
+            detailsCandidate.contains("Solids") -> FeedMode.solids
+            else -> null
+        }
+    }
+
+    private fun payloadNumberToInt(payloadMap: Map<String, Any>, key: String): Int? {
+        return when (val amount = payloadMap[key]) {
+            is Number -> amount.toInt()
+            is String -> amount.toIntOrNull()
+            else -> null
+        }
     }
 }
 

@@ -2,9 +2,6 @@ package com.contentedest.baby.ui.growth
 
 import kotlin.math.*
 
-/**
- * Data class to hold LMS values for a specific age
- */
 data class LMSValues(
     val ageMonths: Double,
     val l: Double,
@@ -12,10 +9,6 @@ data class LMSValues(
     val s: Double
 )
 
-/**
- * Utility class for calculating growth percentiles using WHO growth charts
- * Based on LMS (Lambda-Mu-Sigma) method
- */
 object GrowthPercentileCalculator {
     
     // Weight-for-age lookup table (male only, Sex=1)
@@ -204,19 +197,14 @@ object GrowthPercentileCalculator {
         return sign * y
     }
     
-    /**
-     * Inverse error function approximation
-     * Uses Acklam's algorithm for high accuracy
-     * This is more accurate than Winitzki's approximation
-     */
+    /** Inverse error function approximation. */
     private fun erfinv(x: Double): Double {
         // Clamp to valid range [-1, 1]
         val clampedX = x.coerceIn(-0.9999999, 0.9999999)
         val sign = if (clampedX < 0) -1.0 else 1.0
         val absX = abs(clampedX)
         
-        // Acklam's algorithm for inverse error function
-        // This provides much better accuracy than Winitzki's approximation
+        // Acklam approximation.
         val a = 0.147
         
         // For values very close to ±1, use asymptotic expansion
@@ -239,41 +227,17 @@ object GrowthPercentileCalculator {
         return result
     }
     
-    /**
-     * Convert percentile to z-score (inverse of zScoreToPercentile)
-     * Uses the inverse CDF of the standard normal distribution (probit function)
-     * 
-     * Implements a more accurate approximation using Acklam's algorithm
-     * for the inverse normal CDF, which is more accurate than going through erfinv
-     * 
-     * @param percentile Percentile value (0-100)
-     * @return Z-score
-     */
+    /** Convert percentile to z-score via inverse normal CDF. */
     private fun percentileToZScore(percentile: Double): Double {
-        // Clamp percentile to valid range to avoid numerical issues
         val clampedPercentile = percentile.coerceIn(0.01, 99.99)
-        
-        // Convert percentile to probability (0-1)
         val p = clampedPercentile / 100.0
-        
-        // Use Acklam's algorithm for inverse normal CDF (more accurate than erfinv approach)
-        // This directly calculates the probit function: probit(p) = Φ^(-1)(p)
         return probit(p)
     }
     
-    /**
-     * Probit function: inverse of the standard normal CDF
-     * Uses Acklam's algorithm for high accuracy
-     * 
-     * @param p Probability value (0-1), where p = P(Z <= z)
-     * @return Z-score such that P(Z <= z) = p
-     */
+    /** Inverse of the standard normal CDF (Acklam approximation). */
     private fun probit(p: Double): Double {
-        // Clamp p to valid range
         val clampedP = p.coerceIn(0.0000001, 0.9999999)
-        
-        // Acklam's algorithm for inverse normal CDF
-        // This is more accurate than using erfinv
+
         val a0 = 2.50662823884
         val a1 = -18.61500062529
         val a2 = 41.39119773534
@@ -293,13 +257,11 @@ object GrowthPercentileCalculator {
         val absQ = abs(q)
         
         return if (absQ < 0.425) {
-            // Central region: use rational approximation
             val r = q * q
             val num = (((a3 * r + a2) * r + a1) * r + a0) * q
             val den = ((((b4 * r + b3) * r + b2) * r + b1) * r + 1.0)
             num / den
         } else {
-            // Tail regions: use different approximation
             val r = if (q < 0.0) clampedP else 1.0 - clampedP
             val rSqrt = sqrt(-ln(r))
             val num = ((c3 * rSqrt + c2) * rSqrt + c1) * rSqrt + c0
@@ -309,50 +271,21 @@ object GrowthPercentileCalculator {
         }
     }
     
-    /**
-     * Calculate measurement value from z-score and LMS values (inverse of calculateZScore)
-     * 
-     * Forward: Z = ((X/M)^L - 1) / (L * S)
-     * Rearranging: (X/M)^L = 1 + Z * L * S
-     * So: X/M = (1 + Z * L * S)^(1/L)
-     * Therefore: X = M * (1 + Z * L * S)^(1/L)
-     * 
-     * @param zScore Z-score
-     * @param lms LMS values
-     * @return Measurement value
-     */
+    /** Inverse LMS transform from z-score to measurement. */
     private fun zScoreToMeasurement(zScore: Double, lms: LMSValues): Double {
         return if (abs(lms.l) < 1e-10) {
-            // L == 0: Z = ln(X/M) / S, so X = M * exp(Z * S)
             lms.m * exp(zScore * lms.s)
         } else {
-            // L != 0: Z = ((X/M)^L - 1) / (L * S), so (X/M)^L = 1 + Z * L * S
-            // So X = M * (1 + Z * L * S)^(1/L)
             val term = 1.0 + zScore * lms.l * lms.s
-            
-            // Validate that the term is positive (required for real-valued result)
-            // For valid z-scores and LMS values, this should always be positive
-            // but we add a safety check to avoid numerical issues
             if (term <= 0.0) {
-                // This shouldn't happen for valid inputs, but handle edge case
-                // For extreme z-scores, the term might be negative or zero
-                // In this case, return a very small positive value
                 return lms.m * 1e-10
             }
-            
-            // Calculate X = M * term^(1/L)
-            // When L is negative, 1/L is also negative, so we're taking a negative power
-            // This is equivalent to: X = M / term^(-1/L) = M / (term^(1/abs(L)))
-            // But pow handles negative exponents correctly, so we can use it directly
+
             val power = 1.0 / lms.l
             val result = lms.m * term.pow(power)
-            
-            // Verify the result is positive and reasonable
             if (result <= 0.0 || !result.isFinite()) {
-                // Fallback: use median if calculation fails
                 return lms.m
             }
-            
             result
         }
     }

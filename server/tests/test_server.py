@@ -72,6 +72,133 @@ async def test_pair_and_sync_flow(monkeypatch, tmp_path):
         assert latest["version"] == 2
 
 
+async def test_sync_push_merges_adjacent_closed_sleep_events():
+    async with AsyncClient(transport=_TEST_TRANSPORT, base_url="http://test") as ac:
+        device_id = f"merge-dev-{uuid.uuid4()}"
+        pair = await ac.post(
+            "/pair",
+            json={"pairing_code": "abc", "device_id": device_id, "name": "Phone"},
+        )
+        assert pair.status_code == 200
+        token = pair.json()["token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        now = int(time.time())
+        first_id = str(uuid.uuid4())
+        second_id = str(uuid.uuid4())
+
+        first = {
+            "event_id": first_id,
+            "type": "sleep",
+            "payload": {"note": "segment-1"},
+            "start_ts": now - 600,
+            "end_ts": now - 300,
+            "ts": None,
+            "created_ts": now - 600,
+            "updated_ts": now - 300,
+            "version": 1,
+            "deleted": False,
+            "device_id": device_id,
+        }
+        second = {
+            "event_id": second_id,
+            "type": "sleep",
+            "payload": {"note": "segment-2"},
+            "start_ts": now - 270,
+            "end_ts": now - 120,
+            "ts": None,
+            "created_ts": now - 270,
+            "updated_ts": now - 120,
+            "version": 1,
+            "deleted": False,
+            "device_id": device_id,
+        }
+
+        r1 = await ac.post("/sync/push", json=[first], headers=headers)
+        assert r1.status_code == 200
+        r2 = await ac.post("/sync/push", json=[second], headers=headers)
+        assert r2.status_code == 200
+
+        pull = await ac.get("/sync/pull?since=0", headers=headers)
+        assert pull.status_code == 200
+        events = pull.json()["events"]
+
+        relevant = {e["event_id"]: e for e in events if e["event_id"] in {first_id, second_id}}
+        assert set(relevant.keys()) == {first_id, second_id}
+        assert relevant[first_id]["deleted"] is False
+        assert relevant[first_id]["start_ts"] == first["start_ts"]
+        assert relevant[first_id]["end_ts"] == second["end_ts"]
+        assert relevant[second_id]["deleted"] is True
+
+
+async def test_growth_conflict_resolution_and_pull_filters():
+    async with AsyncClient(transport=_TEST_TRANSPORT, base_url="http://test") as ac:
+        now = int(time.time())
+        growth_id = str(uuid.uuid4())
+        device_a = f"growth-dev-a-{uuid.uuid4()}"
+        device_b = f"growth-dev-b-{uuid.uuid4()}"
+
+        first = {
+            "id": growth_id,
+            "device_id": device_a,
+            "category": "weight",
+            "value": 12.5,
+            "unit": "lb",
+            "ts": now - 120,
+            "created_ts": now - 120,
+            "updated_ts": now - 120,
+            "version": 1,
+            "deleted": False,
+        }
+        r1 = await ac.post("/growth", json=first)
+        assert r1.status_code == 200
+        first_payload = r1.json()
+        assert first_payload["applied"] is True
+        initial_clock = first_payload["server_clock"]
+
+        stale = dict(first)
+        stale["value"] = 9.9
+        stale["updated_ts"] = now - 119
+        stale["version"] = 0
+        stale["device_id"] = device_b
+        r2 = await ac.post("/growth", json=stale)
+        assert r2.status_code == 200
+        stale_payload = r2.json()
+        assert stale_payload["data"]["value"] == first["value"]
+        assert stale_payload["data"]["version"] == first["version"]
+        assert stale_payload["server_clock"] == initial_clock
+
+        newer = dict(first)
+        newer["value"] = 13.2
+        newer["updated_ts"] = now
+        newer["version"] = 2
+        newer["device_id"] = device_b
+        r3 = await ac.post("/growth", json=newer)
+        assert r3.status_code == 200
+        latest_payload = r3.json()
+        assert latest_payload["data"]["value"] == newer["value"]
+        assert latest_payload["data"]["version"] == newer["version"]
+        assert latest_payload["server_clock"] > initial_clock
+
+        r4 = await ac.get("/growth?since=0&category=weight")
+        assert r4.status_code == 200
+        rows = [d for d in r4.json()["data"] if d["id"] == growth_id]
+        assert len(rows) == 1
+        assert rows[0]["value"] == newer["value"]
+
+        r4b = await ac.get("/growth?since=0")
+        assert r4b.status_code == 200
+        all_rows = [d for d in r4b.json()["data"] if d["id"] == growth_id]
+        assert len(all_rows) == 1
+        assert all_rows[0]["value"] == newer["value"]
+
+        r5 = await ac.get(f"/growth?since={initial_clock}")
+        assert r5.status_code == 200
+        changed = [d for d in r5.json()["data"] if d["id"] == growth_id]
+        assert len(changed) == 1
+        assert changed[0]["version"] == newer["version"]
+
+
 async def test_webhook_occupied_creates_then_idempotent():
     device_id = f"webhook-test-{uuid.uuid4()}"
     async with AsyncClient(transport=_TEST_TRANSPORT, base_url="http://test") as ac:
