@@ -202,7 +202,7 @@ This script automatically:
 
 **Manual Release:**
 1. Update `versionCode` and `versionName` in `android/app/build.gradle.kts`
-2. Update `version_code` and `version_name` in `server/app/main.py` `get_update_info()` function
+2. Update `version_code` and `version_name` in `server/app/routers/updates.py` `get_update_info()` (or run `./release_application`, which patches this file automatically)
 3. Build APK: `cd android && ./gradlew assembleRelease`
 4. Copy APK: `cp android/app/build/outputs/apk/release/app-release.apk server/apks/latest.apk`
 5. Restart server if running as service: `sudo systemctl restart contentedest-baby.service`

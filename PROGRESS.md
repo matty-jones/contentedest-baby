@@ -1,5 +1,25 @@
 # Progress
 
+## 2026-04-14 — Release script: patch `updates.py`; app/server 37 / 1.6.0
+
+**Cause:** After the server refactor, `GET /app/update` reads `version_code` / `version_name` from `server/app/routers/updates.py`, but `./release_application` still ran `sed` on `server/app/main.py`, which no longer contains those fields. New APKs were copied to `server/apks/latest.apk` while the API kept advertising the old version, so clients never saw an update.
+
+**Change:** `release_application` now updates `SERVER_UPDATES_PY` (`server/app/routers/updates.py`) via `update_server_updates_py`. Repo aligned to **versionCode 37**, **versionName 1.6.0** in both `android/app/build.gradle.kts` and `updates.py`.
+
+**One-time repair on deployed host:** Pull or copy the updated `server/app/routers/updates.py` (or edit in place: `version_code=37`, `version_name="1.6.0"`), ensure `server/apks/latest.apk` is the matching 1.6.0 build, set `BASE_URL` if needed, then `sudo systemctl restart contentedest-baby.service` (or your process manager). Verify: `curl -s http://HOST:8005/app/update | jq` shows 37 and a `download_url` reachable from devices.
+
+**Future releases:** Run `./release_application` from the current repo version; it increments `versionCode` and bumps `versionName` per flags, then patches `updates.py`. You do **not** need to downgrade Gradle to trick the bump; only use a lower version in `build.gradle.kts` if you intentionally want the *script* to perform `N -> N+1` again (e.g. after a mistaken manual bump).
+
+**Verify:** `source .venv/bin/activate && PYTHONPATH=server pytest -q server/tests`. Rebuild the release APK when you want a binary that matches 37: `cd android && ./gradlew assembleRelease`, then copy to `server/apks/latest.apk` on the server.
+
+## 2026-04-14 — Track `WordRepository.kt`: fix `.gitignore` `data` rule
+
+**Cause:** Root `.gitignore` had a bare `data` entry, which ignores **any** path segment named `data`, including `android/.../com/contentedest/baby/data/`. New files under that package (notably `WordRepository.kt`) were never added to git, so clones and release builds failed with unresolved `WordRepository`.
+
+**Change:** Replace `data` with `/data` so only a **repository-root** `data/` directory is ignored. Add and commit `android/app/src/main/java/com/contentedest/baby/data/repo/WordRepository.kt`.
+
+**Verify:** `./gradlew :app:compileReleaseKotlin` from `android/`.
+
 ## 2026-04-14 — Words UI: title-case labels and date-based vocabulary graph
 
 **Change:** Word cards use `String.displayWordTitleCase()` (locale-aware first-character title case via `WordDisplay.kt`). `WordsGraphView` no longer plots one point per word index; it builds one point per **calendar day** from the first word’s local date through `max(last word date, today)`, with **y = cumulative count** of words whose `ts` falls before the start of the next day (end-of-day total). Horizontal segments appear on days with no new words; steps occur when new words are logged.

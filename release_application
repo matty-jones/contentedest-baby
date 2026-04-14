@@ -22,7 +22,8 @@ export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
 # File paths
 BUILD_GRADLE="android/app/build.gradle.kts"
-SERVER_MAIN="server/app/main.py"
+# Must match `get_update_info()` in server/app/routers/updates.py (refactor moved this out of main.py)
+SERVER_UPDATES_PY="server/app/routers/updates.py"
 APK_OUTPUT="android/app/build/outputs/apk/release/app-release.apk"
 APK_DEST="server/apks/latest.apk"
 
@@ -117,23 +118,23 @@ update_build_gradle() {
     print_success "Updated versionCode to $new_version_code and versionName to $new_version_name"
 }
 
-# Function to update server main.py
-update_server_main() {
+# Function to update server/app/routers/updates.py (GET /app/update metadata)
+update_server_updates_py() {
     local new_version_code="$1"
     local new_version_name="$2"
     
-    print_info "Updating $SERVER_MAIN..."
+    print_info "Updating $SERVER_UPDATES_PY..."
     
     # Update version_code (Python format: version_code=1, or version_code=1,  # comment)
     # Match version_code= followed by digits, then capture everything after (comma, comment, etc.)
-    sed -i "s/\(version_code=\)[0-9]*\(.*\)/\1$new_version_code\2/" "$SERVER_MAIN"
+    sed -i "s/\(version_code=\)[0-9]*\(.*\)/\1$new_version_code\2/" "$SERVER_UPDATES_PY"
     # If there's no comma after the number, add one (handles edge case where line has no comma)
-    sed -i "s/\(version_code=$new_version_code\)$/\1,/" "$SERVER_MAIN"
-    sed -i "s/\(version_code=$new_version_code\)\(\s\+#\)/\1, \2/" "$SERVER_MAIN"
+    sed -i "s/\(version_code=$new_version_code\)$/\1,/" "$SERVER_UPDATES_PY"
+    sed -i "s/\(version_code=$new_version_code\)\(\s\+#\)/\1, \2/" "$SERVER_UPDATES_PY"
     
     # Update version_name (Python format: version_name="1.0", or version_name="1.0",  # comment)
     # Match version_name="..." and capture everything after the closing quote (comma, comment, etc.)
-    sed -i "s/\(version_name=\"\)[^\"]*\(\".*\)/\1$new_version_name\2/" "$SERVER_MAIN"
+    sed -i "s/\(version_name=\"\)[^\"]*\(\".*\)/\1$new_version_name\2/" "$SERVER_UPDATES_PY"
     
     print_success "Updated server version_code to $new_version_code and version_name to $new_version_name"
 }
@@ -340,8 +341,8 @@ main() {
     copy_apk_to_server
     echo ""
     
-    # Step 4: Update server main.py
-    update_server_main "$new_version_code" "$new_version_name"
+    # Step 4: Update server/app/routers/updates.py (advertised version for GET /app/update)
+    update_server_updates_py "$new_version_code" "$new_version_name"
     echo ""
     
     # Summary
@@ -358,7 +359,7 @@ main() {
     echo "  Server copy:  $apk_dest_absolute"
     echo ""
     print_info "Next steps:"
-    echo "  1. Review the changes in $BUILD_GRADLE and $SERVER_MAIN"
+    echo "  1. Review the changes in $BUILD_GRADLE and $SERVER_UPDATES_PY"
     echo "  2. Restart the server if it's running: sudo systemctl restart contentedest-baby.service"
     echo "  3. Users will be prompted to update on next app launch"
     echo ""
