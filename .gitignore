@@ -6,7 +6,8 @@ android/build/
 android/app/build/
 server/.venv/
 server/apks
-data
+# Ignore only top-level data dir (not Android package com.contentedest.baby.data)
+/data
 __pycache__/
 .pytest_cache/
 .DS_Store
