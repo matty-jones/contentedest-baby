@@ -199,6 +199,66 @@ async def test_growth_conflict_resolution_and_pull_filters():
         assert changed[0]["version"] == newer["version"]
 
 
+async def test_words_conflict_resolution_and_pull_filters():
+    async with AsyncClient(transport=_TEST_TRANSPORT, base_url="http://test") as ac:
+        now = int(time.time())
+        word_id = str(uuid.uuid4())
+        device_a = f"words-dev-a-{uuid.uuid4()}"
+        device_b = f"words-dev-b-{uuid.uuid4()}"
+
+        first = {
+            "id": word_id,
+            "device_id": device_a,
+            "word": "mama",
+            "ts": now - 120,
+            "created_ts": now - 120,
+            "updated_ts": now - 120,
+            "version": 1,
+            "deleted": False,
+        }
+        r1 = await ac.post("/words", json=first)
+        assert r1.status_code == 200
+        first_payload = r1.json()
+        assert first_payload["applied"] is True
+        initial_clock = first_payload["server_clock"]
+
+        stale = dict(first)
+        stale["word"] = "dada"
+        stale["updated_ts"] = now - 119
+        stale["version"] = 0
+        stale["device_id"] = device_b
+        r2 = await ac.post("/words", json=stale)
+        assert r2.status_code == 200
+        stale_payload = r2.json()
+        assert stale_payload["data"]["word"] == first["word"]
+        assert stale_payload["data"]["version"] == first["version"]
+        assert stale_payload["server_clock"] == initial_clock
+
+        newer = dict(first)
+        newer["word"] = "hello"
+        newer["updated_ts"] = now
+        newer["version"] = 2
+        newer["device_id"] = device_b
+        r3 = await ac.post("/words", json=newer)
+        assert r3.status_code == 200
+        latest_payload = r3.json()
+        assert latest_payload["data"]["word"] == newer["word"]
+        assert latest_payload["data"]["version"] == newer["version"]
+        assert latest_payload["server_clock"] > initial_clock
+
+        r4 = await ac.get("/words?since=0")
+        assert r4.status_code == 200
+        rows = [d for d in r4.json()["data"] if d["id"] == word_id]
+        assert len(rows) == 1
+        assert rows[0]["word"] == newer["word"]
+
+        r5 = await ac.get(f"/words?since={initial_clock}")
+        assert r5.status_code == 200
+        changed = [d for d in r5.json()["data"] if d["id"] == word_id]
+        assert len(changed) == 1
+        assert changed[0]["version"] == newer["version"]
+
+
 async def test_webhook_occupied_creates_then_idempotent():
     device_id = f"webhook-test-{uuid.uuid4()}"
     async with AsyncClient(transport=_TEST_TRANSPORT, base_url="http://test") as ac:

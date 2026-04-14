@@ -77,6 +77,28 @@ class GrowthPullResponse(BaseModel):
     data: List[GrowthDataDTO]
 
 
+class WordDTO(BaseModel):
+    id: str
+    device_id: str
+    word: str
+    ts: int
+    created_ts: int
+    updated_ts: int
+    version: int
+    deleted: bool = False
+
+
+class WordPushResponse(BaseModel):
+    server_clock: int
+    applied: bool
+    data: WordDTO
+
+
+class WordPullResponse(BaseModel):
+    server_clock: int
+    data: List[WordDTO]
+
+
 class CribWebhookPayload(BaseModel):
     state: Literal["occupied", "empty"]
     device_id: Optional[str] = None

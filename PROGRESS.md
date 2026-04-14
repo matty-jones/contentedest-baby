@@ -1,5 +1,17 @@
 # Progress
 
+## 2026-04-13 — Words UI: Add word button and date-only dialog; import script
+
+**Change:** Words screen uses a full-width "Add word" button (replacing the FAB). Add dialog only asks for the word and the date first said (defaults to today); timestamp is start of local day. Added `server/scripts/import_words.py` plus `server/scripts/example_words_seed.json` for bulk seeding `baby_words` (JSON array of `word` + `date` YYYY-MM-DD, UTC midnight; `--dry-run` supported).
+
+**Verify:** `./gradlew :app:compileDebugKotlin` from `android/`. `python3 server/scripts/import_words.py --device-id ID --dry-run server/scripts/example_words_seed.json`.
+
+## 2026-04-13 — Words tab (vocabulary tracking)
+
+**Change:** Fourth main tab "Words" (Timeline, Growth, Words, Nursery) with List (two-column grid, newest first) and Graph (cumulative word count over time, Vico chart with scroll-to-recent). Room table `baby_words` (migration 3 to 4), `WordRepository`, push on save and pull in `SyncWorker`. FastAPI `POST /words` and `GET /words?since=` mirroring growth conflict resolution and server clock. Nursery tab renumbered to index 3 (landscape + `NavigationRail` updated).
+
+**Verify:** From `android/`, `./gradlew :app:testDebugUnitTest`. From repo root with venv, `PYTHONPATH=server pytest -q server/tests` (21 tests).
+
 ## 2026-04-13 — Timeline date picker and navigation icons
 
 **Change:** On the Timeline screen, tapping the formatted date (e.g. "Friday, 10th April") opens the Material3 `DatePickerDialog` with the current day selected, plus a "Today" action that jumps to the current date. Previous/next day controls use `IconButton` with `KeyboardArrowLeft` / `KeyboardArrowRight` (same pattern as Daily Log) instead of raw `<` / `>` text.

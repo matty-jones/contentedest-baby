@@ -7,6 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.contentedest.baby.data.local.AppDatabase
 import com.contentedest.baby.data.repo.EventRepository
 import com.contentedest.baby.data.repo.GrowthRepository
+import com.contentedest.baby.data.repo.WordRepository
 // import com.contentedest.baby.data.repo.SyncRepository // Assuming this isn't used directly in AppModule now
 import com.contentedest.baby.net.TokenStorage
 import com.contentedest.baby.timer.TimerStateStorage
@@ -56,8 +57,30 @@ object AppModule {
             }
         }
 
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `baby_words` (
+                        `id` TEXT NOT NULL,
+                        `device_id` TEXT NOT NULL,
+                        `word` TEXT NOT NULL,
+                        `ts` INTEGER NOT NULL,
+                        `created_ts` INTEGER NOT NULL,
+                        `updated_ts` INTEGER NOT NULL,
+                        `version` INTEGER NOT NULL,
+                        `deleted` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_baby_words_device_id` ON `baby_words` (`device_id`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_baby_words_ts` ON `baby_words` (`ts`)")
+            }
+        }
+
         return Room.databaseBuilder(context, AppDatabase::class.java, "tcb.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
             .build()
     }
 
@@ -69,6 +92,11 @@ object AppModule {
     @Singleton
     fun provideGrowthRepository(db: AppDatabase, api: com.contentedest.baby.net.ApiService): GrowthRepository = 
         GrowthRepository(db.growthDataDao(), api)
+
+    @Provides
+    @Singleton
+    fun provideWordRepository(db: AppDatabase, api: com.contentedest.baby.net.ApiService): WordRepository =
+        WordRepository(db.babyWordDao(), api)
 
     @Provides
     @Singleton

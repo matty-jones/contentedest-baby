@@ -5,8 +5,8 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 
 @Database(
-    entities = [EventEntity::class, FeedSegmentEntity::class, SyncStateEntity::class, SettingsEntity::class, GrowthDataEntity::class],
-    version = 3,
+    entities = [EventEntity::class, FeedSegmentEntity::class, SyncStateEntity::class, SettingsEntity::class, GrowthDataEntity::class, BabyWordEntity::class],
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -15,6 +15,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun syncStateDao(): SyncStateDao
     abstract fun settingsDao(): SettingsDao
     abstract fun growthDataDao(): GrowthDataDao
+
+    abstract fun babyWordDao(): BabyWordDao
 }
 
 
