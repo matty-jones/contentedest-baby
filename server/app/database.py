@@ -5,7 +5,9 @@ from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from sqlalchemy.engine import Engine
 
 # Allow overriding DB path for tests via env var
-DB_PATH = os.environ.get("TCB_DB_PATH", os.path.join(os.path.dirname(__file__), "..", "data.db"))
+DB_PATH = os.environ.get(
+    "TCB_DB_PATH", os.path.join(os.path.dirname(__file__), "..", "db", "data.db")
+)
 SQLALCHEMY_DATABASE_URL = f"sqlite:///{os.path.abspath(DB_PATH)}"
 
 os.makedirs(os.path.dirname(os.path.abspath(DB_PATH)), exist_ok=True)

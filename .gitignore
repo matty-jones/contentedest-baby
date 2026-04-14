@@ -6,7 +6,6 @@ android/build/
 android/app/build/
 server/.venv/
 server/apks
-server/db
 data
 __pycache__/
 .pytest_cache/
@@ -18,3 +17,4 @@ TEMP
 *.backup
 *.swp
 PROGRESS.md
+server/db

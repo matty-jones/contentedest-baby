@@ -15,9 +15,9 @@ import os
 import sqlite3
 import sys
 
-# Default: server/data.db relative to repo
+# Default: server/db/data.db relative to repo (same as server.app.database)
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-_DEFAULT_DB = os.path.join(_SCRIPT_DIR, "..", "data.db")
+_DEFAULT_DB = os.path.join(_SCRIPT_DIR, "..", "db", "data.db")
 
 
 def main() -> int:

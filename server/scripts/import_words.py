@@ -15,7 +15,7 @@ JSON format (array of objects):
 Dates are YYYY-MM-DD and are stored as epoch seconds at 00:00:00 UTC for that calendar day.
 
 Usage:
-  export TCB_DB_PATH=/path/to/data.db   # optional; defaults under server/
+  export TCB_DB_PATH=/path/to/data.db   # optional; default is server/db/data.db
   python3 server/scripts/import_words.py --device-id YOUR_DEVICE_ID words.json
 
   python3 server/scripts/import_words.py --device-id dev --dry-run words.json

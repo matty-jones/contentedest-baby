@@ -28,6 +28,7 @@ Offline-first baby tracker for Sleep, Feeding, Nappy, and Growth tracking with a
 ## Repo Layout
 
 - `server/` — FastAPI LAN server (SQLite)
+- `server/db/data.db` — default SQLite database path (override with `TCB_DB_PATH`)
 - `android/` — Android app (Kotlin, Jetpack Compose, Room, Hilt)
 
 ## Quickstart — Server
@@ -104,8 +105,8 @@ Use the import script to merge new data with existing database (non-destructive)
 # Activate venv first
 . server/.venv/bin/activate
 
-# Optionally point at a custom DB path (defaults to server/data.db)
-export TCB_DB_PATH=/home/blasky/Projects/contentedest-baby/server/data.db
+# Optionally point at a custom DB path (defaults to server/db/data.db)
+export TCB_DB_PATH=/home/blasky/Projects/contentedest-baby/server/db/data.db
 
 # Run the importer
 ./import_data.py /absolute/path/to/your.csv
@@ -122,8 +123,8 @@ Use the migration script to replace the SQLite DB from a CSV. **Warning: This is
 # Activate venv first
 . server/.venv/bin/activate
 
-# Optionally point at a custom DB path (defaults to server/data.db)
-export TCB_DB_PATH=/home/blasky/Projects/contentedest-baby/server/data.db
+# Optionally point at a custom DB path (defaults to server/db/data.db)
+export TCB_DB_PATH=/home/blasky/Projects/contentedest-baby/server/db/data.db
 
 # Run the migrator
 ./migrate_database.py /absolute/path/to/your.csv --device-id seed_device

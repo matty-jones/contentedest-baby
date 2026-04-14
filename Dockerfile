@@ -18,13 +18,15 @@ RUN pip install --upgrade pip && pip install -r /app/server/requirements.txt
 # Copy server code
 COPY server /app/server
 
+# Create nonroot user first (DB dir must be writable when no volume is mounted)
+RUN useradd -m appuser
+RUN mkdir -p /app/server/db && chown -R appuser:appuser /app/server/db
+
 # Default env (overridable by compose/.env)
-ENV TCB_DB_PATH=/data/data.db \
+ENV TCB_DB_PATH=/app/server/db/data.db \
     TZ=America/Boise \
     PORT=8080
 
-# Create nonroot user
-RUN useradd -m appuser
 USER appuser
 
 # Run FastAPI via uvicorn

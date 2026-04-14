@@ -1,5 +1,17 @@
 # Progress
 
+## 2026-04-14 — Single default SQLite path: `server/db/data.db`
+
+**Change:** `server/app/database.py` default `DB_PATH` is now `server/db/data.db` (was `server/data.db`). Scripts that embedded `server/data.db` as a fallback (`find_duplicate_sleep_events.py`, `audit_sleep_duplicates.py`) use the same path. README examples updated. Dockerfile default `TCB_DB_PATH` aligned with docker-compose (`/app/server/db/data.db`). Removed `server/db` from `.gitignore` so the directory can be tracked; `*.db*` still ignores SQLite files.
+
+**Migrate old data:** if you still have `server/data.db`, move or copy it to `server/db/data.db` (create `server/db/` first) then remove the old file if desired.
+
+## 2026-04-14 — Words sync: empty `baby_words` on pulled DB
+
+**Finding:** `server/db/data.db` (copy pulled from the host) has `baby_words` table present but **0 rows**. `GET /words?since=0` therefore returns an empty list; the app logs `No new words to sync` and shows "No words yet". The default API DB path is `server/db/data.db` (see `server/app/database.py`, `DB_PATH` / `TCB_DB_PATH`). If `import_words.py` was run with a different `TCB_DB_PATH` than the running uvicorn process, words land in a different file than the API serves.
+
+**Check on host:** `sqlite3 "$TCB_DB_PATH" 'SELECT COUNT(*) FROM baby_words;'` (or the default `server/db/data.db`). Re-run import against that same path.
+
 ## 2026-04-13 — Words UI: Add word button and date-only dialog; import script
 
 **Change:** Words screen uses a full-width "Add word" button (replacing the FAB). Add dialog only asks for the word and the date first said (defaults to today); timestamp is start of local day. Added `server/scripts/import_words.py` plus `server/scripts/example_words_seed.json` for bulk seeding `baby_words` (JSON array of `word` + `date` YYYY-MM-DD, UTC midnight; `--dry-run` supported).

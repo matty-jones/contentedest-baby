@@ -22,7 +22,7 @@ import sqlite3
 import sys
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-_DEFAULT_DB = os.path.join(_SCRIPT_DIR, "..", "data.db")
+_DEFAULT_DB = os.path.join(_SCRIPT_DIR, "..", "db", "data.db")
 
 
 def main() -> int:
@@ -30,7 +30,7 @@ def main() -> int:
     p.add_argument(
         "--db",
         default=os.environ.get("TCB_DB_PATH", _DEFAULT_DB),
-        help="Path to SQLite DB (default: TCB_DB_PATH or server/data.db)",
+        help="Path to SQLite DB (default: TCB_DB_PATH or server/db/data.db)",
     )
     p.add_argument(
         "--tolerance-seconds",
