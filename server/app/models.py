@@ -64,3 +64,17 @@ class GrowthData(Base):
     server_clock: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
+class BabyWord(Base):
+    __tablename__ = "baby_words"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    device_id: Mapped[str] = mapped_column(String, nullable=False)
+    word: Mapped[str] = mapped_column(String, nullable=False)
+    ts: Mapped[int] = mapped_column(Integer, nullable=False)  # first use
+    created_ts: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_ts: Mapped[int] = mapped_column(Integer, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    server_clock: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+

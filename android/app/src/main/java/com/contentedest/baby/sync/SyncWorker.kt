@@ -6,6 +6,7 @@ import androidx.work.ListenableWorker.Result as WorkerResult
 import com.contentedest.baby.data.repo.EventRepository
 import com.contentedest.baby.data.repo.GrowthRepository
 import com.contentedest.baby.data.repo.SyncRepository
+import com.contentedest.baby.data.repo.WordRepository
 import com.contentedest.baby.net.EventDto
 import com.contentedest.baby.net.GrowthDataDto
 import dagger.hilt.EntryPoint
@@ -25,11 +26,13 @@ class SyncWorker(
     interface WorkerDependenciesEntryPoint {
         fun eventRepository(): EventRepository
         fun growthRepository(): GrowthRepository
+        fun wordRepository(): WordRepository
         fun syncRepository(): SyncRepository
     }
 
     private val eventRepository: EventRepository
     private val growthRepository: GrowthRepository
+    private val wordRepository: WordRepository
     private val syncRepository: SyncRepository
 
     init {
@@ -39,6 +42,7 @@ class SyncWorker(
         )
         eventRepository = entryPoint.eventRepository()
         growthRepository = entryPoint.growthRepository()
+        wordRepository = entryPoint.wordRepository()
         syncRepository = entryPoint.syncRepository()
     }
 
@@ -59,6 +63,7 @@ class SyncWorker(
 
             // Sync growth data
             val growthPullResult = growthRepository.syncPull(since = 0)
+            val wordPullResult = wordRepository.syncPull(since = 0)
 
             return@coroutineScope when (pullResult) {
                 is com.contentedest.baby.data.repo.Result.Success -> {
@@ -84,6 +89,20 @@ class SyncWorker(
                         }
                         is com.contentedest.baby.data.repo.Result.Failure -> {
                             android.util.Log.e("SyncWorker", "Growth data sync failed", growthPullResult.exception)
+                        }
+                    }
+
+                    when (wordPullResult) {
+                        is com.contentedest.baby.data.repo.Result.Success -> {
+                            val words = wordPullResult.data.second
+                            if (words.isNotEmpty()) {
+                                android.util.Log.d("SyncWorker", "Synced ${words.size} word entries")
+                            } else {
+                                android.util.Log.d("SyncWorker", "No new words to sync")
+                            }
+                        }
+                        is com.contentedest.baby.data.repo.Result.Failure -> {
+                            android.util.Log.e("SyncWorker", "Word sync failed", wordPullResult.exception)
                         }
                     }
                     

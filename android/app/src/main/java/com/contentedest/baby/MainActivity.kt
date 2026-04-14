@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -30,6 +31,7 @@ import com.contentedest.baby.data.local.EventType
 import com.contentedest.baby.data.local.EventEntity
 import com.contentedest.baby.data.repo.EventRepository
 import com.contentedest.baby.data.repo.GrowthRepository
+import com.contentedest.baby.data.repo.WordRepository
 import com.contentedest.baby.sync.SyncWorker
 import com.contentedest.baby.ui.timeline.TimelineScreen
 import com.contentedest.baby.ui.timeline.TimelineViewModel
@@ -43,6 +45,8 @@ import com.contentedest.baby.ui.stats.QuickStatsBar
 import com.contentedest.baby.ui.growth.GrowthScreen
 import com.contentedest.baby.ui.growth.GrowthStatsBar
 import com.contentedest.baby.ui.nursery.NurseryScreen
+import com.contentedest.baby.ui.words.WordsScreen
+import com.contentedest.baby.ui.words.WordsStatsBar
 import com.contentedest.baby.ui.splash.SplashScreen
 import com.contentedest.baby.update.UpdateChecker
 import com.contentedest.baby.update.UpdateResult
@@ -59,6 +63,7 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
     @Inject lateinit var eventRepository: EventRepository
     @Inject lateinit var growthRepository: GrowthRepository
+    @Inject lateinit var wordRepository: WordRepository
     @Inject lateinit var updateChecker: UpdateChecker
     
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -98,8 +103,8 @@ class MainActivity : ComponentActivity() {
                     var showSettingsScreen by remember { mutableStateOf(false) }
                     var selectedEventForEdit by remember { mutableStateOf<EventEntity?>(null) }
 
-                    // Simple bottom nav across three tabs - use rememberSaveable to persist across config changes
-                    var selectedTab by rememberSaveable { mutableStateOf(0) } // 0: Timeline, 1: Growth, 2: Nursery
+                    // Bottom nav: Timeline, Growth, Words, Nursery — rememberSaveable across config changes
+                    var selectedTab by rememberSaveable { mutableStateOf(0) } // 0–3: Timeline, Growth, Words, Nursery
                     
                     // Timeline date state - shared between TimelineScreen and QuickStatsBar
                     var timelineDate by rememberSaveable { mutableStateOf(LocalDate.now()) }
@@ -110,7 +115,7 @@ class MainActivity : ComponentActivity() {
                     
                     // Auto-rotate to landscape when Nursery tab is selected
                     LaunchedEffect(selectedTab) {
-                        if (selectedTab == 2) {
+                        if (selectedTab == 3) {
                             // Nursery tab - force landscape
                             // Small delay to ensure state is set before orientation change
                             kotlinx.coroutines.delay(50)
@@ -123,7 +128,7 @@ class MainActivity : ComponentActivity() {
                     
                     // Show landscape layout when Nursery is selected, even if orientation hasn't changed yet
                     // This ensures the layout switches immediately without waiting for orientation change
-                    val showLandscapeLayout = selectedTab == 2
+                    val showLandscapeLayout = selectedTab == 3
 
                     // Generate device ID once per app install
                     val deviceId = remember { 
@@ -222,6 +227,12 @@ class MainActivity : ComponentActivity() {
                                 NavigationRailItem(
                                     selected = selectedTab == 2,
                                     onClick = { selectedTab = 2 },
+                                    icon = { Icon(Icons.Filled.RecordVoiceOver, contentDescription = "Words") },
+                                    label = { Text("Words") }
+                                )
+                                NavigationRailItem(
+                                    selected = selectedTab == 3,
+                                    onClick = { selectedTab = 3 },
                                     icon = { Icon(Icons.Filled.Videocam, contentDescription = "Nursery") },
                                     label = { Text("Nursery") }
                                 )
@@ -282,6 +293,12 @@ class MainActivity : ComponentActivity() {
                                                 modifier = Modifier.fillMaxWidth()
                                             )
                                         }
+                                        if (selectedTab == 2) {
+                                            WordsStatsBar(
+                                                wordRepository = wordRepository,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
                                         NavigationBar {
                                             NavigationBarItem(
                                                 selected = selectedTab == 0,
@@ -301,6 +318,12 @@ class MainActivity : ComponentActivity() {
                                             NavigationBarItem(
                                                 selected = selectedTab == 2,
                                                 onClick = { selectedTab = 2 },
+                                                icon = { Icon(Icons.Filled.RecordVoiceOver, contentDescription = "Words") },
+                                                label = { Text("Words") }
+                                            )
+                                            NavigationBarItem(
+                                                selected = selectedTab == 3,
+                                                onClick = { selectedTab = 3 },
                                                 icon = { Icon(Icons.Filled.Videocam, contentDescription = "Nursery") },
                                                 label = { Text("Nursery") }
                                             )
@@ -396,8 +419,15 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                                 2 -> {
-                                    // Nursery screen - only shown in portrait mode here
-                                    // (landscape mode is handled above)
+                                    WordsScreen(
+                                        wordRepository = wordRepository,
+                                        deviceId = deviceId,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(innerPadding)
+                                    )
+                                }
+                                3 -> {
                                     NurseryScreen(
                                         streamUrl = "rtsp://192.168.86.3:8554/nursery_camera",
                                         modifier = Modifier

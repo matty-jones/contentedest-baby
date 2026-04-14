@@ -106,4 +106,22 @@ data class GrowthDataEntity(
     val deleted: Boolean = false
 )
 
+@Entity(
+    tableName = "baby_words",
+    indices = [
+        Index(value = ["device_id"]),
+        Index(value = ["ts"])
+    ]
+)
+data class BabyWordEntity(
+    @PrimaryKey val id: String,
+    val device_id: String,
+    val word: String,
+    val ts: Long,
+    val created_ts: Long,
+    val updated_ts: Long,
+    val version: Int,
+    val deleted: Boolean = false
+)
+
 

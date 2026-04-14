@@ -30,4 +30,10 @@ interface ApiService {
         @Query("category") category: String? = null,
         @Query("since") since: Long = 0
     ): GrowthPullResponse
+
+    @POST("/words")
+    suspend fun pushWord(@Body data: WordDto): WordPushResponse
+
+    @GET("/words")
+    suspend fun pullWords(@Query("since") since: Long = 0): WordPullResponse
 }

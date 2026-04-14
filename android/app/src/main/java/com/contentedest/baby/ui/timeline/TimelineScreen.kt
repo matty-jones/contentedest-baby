@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.platform.LocalContext
 import java.time.Instant
+import java.time.ZoneOffset
 import com.contentedest.baby.data.local.EventEntity
 import com.contentedest.baby.timer.TimerStateStorage
 import com.contentedest.baby.timer.TimerBackgroundService
@@ -1043,9 +1044,11 @@ fun TimelineDatePickerDialog(
     onDateSelected: (LocalDate) -> Unit,
     onDismiss: () -> Unit
 ) {
+    // Material3 DatePicker millis are UTC midnight for the calendar day; use UTC for conversions
+    // so local timezones (e.g. GMT-7) do not shift the selected LocalDate by one day.
     val zone = ZoneId.systemDefault()
     val initialMillis = remember(initialDate) {
-        initialDate.atStartOfDay(zone).toInstant().toEpochMilli()
+        initialDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
     }
     val datePickerState = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
 
@@ -1055,7 +1058,7 @@ fun TimelineDatePickerDialog(
             TextButton(
                 onClick = {
                     datePickerState.selectedDateMillis?.let { millis ->
-                        val selected = Instant.ofEpochMilli(millis).atZone(zone).toLocalDate()
+                        val selected = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
                         onDateSelected(selected)
                     }
                 }

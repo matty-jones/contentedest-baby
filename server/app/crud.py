@@ -4,7 +4,7 @@ import uuid
 from typing import Iterable, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import select
-from .models import Device, Event, ServerClock, GrowthData
+from .models import BabyWord, Device, Event, ServerClock, GrowthData
 from .event_policy import (
     ADJACENT_MERGE_GAP_SECONDS,
     MIN_CRIB_WEBHOOK_SLEEP_SECONDS,
@@ -28,6 +28,15 @@ _GROWTH_UPSERT_FIELDS = (
     "category",
     "value",
     "unit",
+    "ts",
+    "created_ts",
+    "updated_ts",
+    "version",
+    "deleted",
+)
+_WORD_UPSERT_FIELDS = (
+    "device_id",
+    "word",
     "ts",
     "created_ts",
     "updated_ts",
@@ -166,6 +175,35 @@ def get_growth_data_by_category(session: Session, category: str) -> list[GrowthD
         GrowthData.category == category,
         GrowthData.deleted == False
     ).order_by(GrowthData.ts)
+    return list(session.scalars(stmt).all())
+
+
+def resolve_baby_word(existing: BabyWord | None, incoming: BabyWord) -> Tuple[BabyWord, bool]:
+    if existing is None:
+        return incoming, True
+    existing_key = (existing.version, existing.updated_ts, existing.device_id)
+    incoming_key = (incoming.version, incoming.updated_ts, incoming.device_id)
+    if _incoming_wins(existing_key, incoming_key):
+        _copy_fields(existing, incoming, _WORD_UPSERT_FIELDS)
+        return existing, True
+    return existing, False
+
+
+def upsert_baby_word(session: Session, incoming: BabyWord) -> Tuple[BabyWord, int]:
+    existing = session.get(BabyWord, incoming.id)
+    winner, changed = resolve_baby_word(existing, incoming)
+    if changed:
+        clock = next_clock(session)
+        winner.server_clock = clock
+        session.add(winner)
+        session.commit()
+        session.refresh(winner)
+    new_clock = get_clock(session)
+    return winner, new_clock
+
+
+def select_baby_words_since(session: Session, since_clock: int) -> list[BabyWord]:
+    stmt = select(BabyWord).where(BabyWord.server_clock > since_clock)
     return list(session.scalars(stmt).all())
 
 

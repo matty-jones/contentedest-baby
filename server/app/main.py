@@ -11,6 +11,7 @@ from .routers import (
     sync_router,
     updates_router,
     webhook_router,
+    words_router,
 )
 from .seed import seed_database
 
@@ -48,3 +49,4 @@ app.include_router(webhook_router)
 app.include_router(sync_router)
 app.include_router(updates_router)
 app.include_router(growth_router)
+app.include_router(words_router)

@@ -86,3 +86,28 @@ data class GrowthPullResponse(
     @Json(name = "server_clock") val serverClock: Long,
     val data: List<GrowthDataDto>
 )
+
+@JsonClass(generateAdapter = true)
+data class WordDto(
+    val id: String,
+    @Json(name = "device_id") val deviceId: String,
+    val word: String,
+    val ts: Long,
+    @Json(name = "created_ts") val createdTs: Long,
+    @Json(name = "updated_ts") val updatedTs: Long,
+    val version: Int,
+    val deleted: Boolean = false
+)
+
+@JsonClass(generateAdapter = true)
+data class WordPushResponse(
+    @Json(name = "server_clock") val serverClock: Long,
+    val applied: Boolean,
+    val data: WordDto
+)
+
+@JsonClass(generateAdapter = true)
+data class WordPullResponse(
+    @Json(name = "server_clock") val serverClock: Long,
+    val data: List<WordDto>
+)

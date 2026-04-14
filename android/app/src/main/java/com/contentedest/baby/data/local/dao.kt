@@ -85,4 +85,22 @@ interface GrowthDataDao {
     suspend fun softDelete(id: String, updatedTs: Long)
 }
 
+@Dao
+interface BabyWordDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(data: BabyWordEntity)
+
+    @Query("SELECT * FROM baby_words WHERE deleted = 0 ORDER BY ts DESC")
+    suspend fun getAllOrderedByFirstUseDesc(): List<BabyWordEntity>
+
+    @Query("SELECT * FROM baby_words WHERE deleted = 0 ORDER BY ts ASC")
+    suspend fun getAllOrderedByFirstUseAsc(): List<BabyWordEntity>
+
+    @Query("SELECT * FROM baby_words WHERE id = :id")
+    suspend fun getById(id: String): BabyWordEntity?
+
+    @Query("UPDATE baby_words SET deleted = 1, updated_ts = :updatedTs, version = version + 1 WHERE id = :id")
+    suspend fun softDelete(id: String, updatedTs: Long)
+}
+
 
