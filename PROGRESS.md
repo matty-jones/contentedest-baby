@@ -1,5 +1,13 @@
 # Progress
 
+## 2026-04-15 — Words: edit and delete flow with sync
+
+**Change:** Added word-card tap editing in the Words list. New `EditWordDialog` preloads word text and first-said date, allows updating both fields, and includes a destructive delete action with a confirmation `AlertDialog`. `WordsScreen` now tracks selected word state and refreshes the list/graph after save or delete.
+
+**Sync plumbing:** `WordRepository` now supports `updateWord(id, word, ts)` (local upsert with `updated_ts` + `version + 1`, then `syncPush`) plus duplicate checks that exclude the current word id (`hasWordCaseInsensitiveExceptId`). Delete remains soft-delete + sync push. `WordsScreen` triggers immediate sync after edit/delete.
+
+**Verify:** `source .venv/bin/activate && cd android && ./gradlew :app:compileDebugKotlin :app:compileReleaseKotlin`.
+
 ## 2026-04-14 — Release script: patch `updates.py`; baseline 36 / 1.5.6 before bump to 1.6.0 (37)
 
 **Cause:** After the server refactor, `GET /app/update` reads `version_code` / `version_name` from `server/app/routers/updates.py`, but `./release_application` still ran `sed` on `server/app/main.py`, which no longer contains those fields. New APKs were copied to `server/apks/latest.apk` while the API kept advertising the old version, so clients never saw an update.

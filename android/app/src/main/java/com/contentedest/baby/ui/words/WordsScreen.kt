@@ -22,9 +22,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.contentedest.baby.data.local.BabyWordEntity
 import com.contentedest.baby.data.repo.WordRepository
+import com.contentedest.baby.sync.SyncWorker
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -34,9 +36,12 @@ fun WordsScreen(
     deviceId: String,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var words by remember { mutableStateOf<List<BabyWordEntity>>(emptyList()) }
     var selectedTabIndex by remember { mutableStateOf(0) }
     var showAddDialog by remember { mutableStateOf(false) }
+    var selectedWord by remember { mutableStateOf<BabyWordEntity?>(null) }
+    var showEditDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     fun reload() {
@@ -85,6 +90,10 @@ fun WordsScreen(
                 when (selectedTabIndex) {
                     0 -> WordsListView(
                         words = words,
+                        onWordClick = { word ->
+                            selectedWord = word
+                            showEditDialog = true
+                        },
                         modifier = Modifier.fillMaxSize()
                     )
                     1 -> Card(
@@ -112,6 +121,29 @@ fun WordsScreen(
             onSaved = {
                 showAddDialog = false
                 reload()
+            }
+        )
+    }
+
+    if (showEditDialog && selectedWord != null) {
+        EditWordDialog(
+            wordRepository = wordRepository,
+            wordEntity = selectedWord!!,
+            onDismiss = {
+                showEditDialog = false
+                selectedWord = null
+            },
+            onSaved = {
+                showEditDialog = false
+                selectedWord = null
+                reload()
+                SyncWorker.triggerImmediateSync(context, deviceId)
+            },
+            onDeleted = {
+                showEditDialog = false
+                selectedWord = null
+                reload()
+                SyncWorker.triggerImmediateSync(context, deviceId)
             }
         )
     }

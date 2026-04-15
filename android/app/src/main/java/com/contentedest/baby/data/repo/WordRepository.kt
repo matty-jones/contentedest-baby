@@ -75,6 +75,28 @@ class WordRepository(
         babyWordDao.getAllOrderedByFirstUseDesc().any { it.word.trim().lowercase() == lower }
     }
 
+    suspend fun hasWordCaseInsensitiveExceptId(word: String, excludedId: String): Boolean = withContext(Dispatchers.IO) {
+        val t = word.trim()
+        if (t.isEmpty()) return@withContext false
+        val lower = t.lowercase()
+        babyWordDao.getAllOrderedByFirstUseDesc().any {
+            it.id != excludedId && it.word.trim().lowercase() == lower
+        }
+    }
+
+    suspend fun updateWord(id: String, word: String, ts: Long) = withContext(Dispatchers.IO) {
+        val existing = babyWordDao.getById(id) ?: return@withContext
+        val now = System.currentTimeMillis() / 1000
+        val updated = existing.copy(
+            word = word,
+            ts = ts,
+            updated_ts = now,
+            version = existing.version + 1
+        )
+        babyWordDao.upsert(updated)
+        syncPush(updated.toDto())
+    }
+
     suspend fun delete(id: String) = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis() / 1000
         babyWordDao.softDelete(id, now)
