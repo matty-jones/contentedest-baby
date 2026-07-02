@@ -1,5 +1,19 @@
 # Progress
 
+## 2026-07-02 — Nursery: overnight RTSP freeze recovery
+
+**Problem:** Live Nursery feed freezes after many hours (~1x/24h). Tab-switch fixes it; position-stall watchdog (`51fc45c`) did not fire because ExoPlayer can stay `STATE_READY`/`isPlaying` while frames stop rendering (Media3 RTSP zombie playback).
+
+**Change:** Refactored `NurseryScreen.kt`:
+- `VideoFrameMetadataListener` + `onRenderedFirstFrame` track actual frame presentation (primary health signal).
+- Unified health check every 2s: frame stale (8s), position stall (secondary), player error, ended/idle.
+- Escalating recovery: soft `loadStream()` first; hard recreate (release + new ExoPlayer + PlayerView rebind) after 2 consecutive failures.
+- 15s recovery cooldown; structured `HEALTH_FAIL` / `RECOVER_OK` / `RECOVER_SKIP` logs.
+- `onPlayerError` and `STATE_ENDED` trigger recovery.
+- Smaller `DefaultLoadControl` buffers (2–8s) for long-running live RTSP.
+
+**Verify:** `cd android && ./gradlew :app:compileDebugKotlin`. Manual: induce RTSP stall (stop go2rtc briefly) and confirm auto-recover within ~8–16s; overnight soak on tablet. Capture `adb logcat -s NurseryScreen:*` if freeze recurs.
+
 ## 2026-04-15 — Words: edit and delete flow with sync
 
 **Change:** Added word-card tap editing in the Words list. New `EditWordDialog` preloads word text and first-said date, allows updating both fields, and includes a destructive delete action with a confirmation `AlertDialog`. `WordsScreen` now tracks selected word state and refreshes the list/graph after save or delete.

@@ -1,17 +1,23 @@
 package com.contentedest.baby.ui.nursery
 
 import android.app.Activity
+import android.content.Context
 import android.net.Uri
 import android.util.Log
 import android.view.WindowManager
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.isActive
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
@@ -19,224 +25,334 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.rtsp.RtspMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+
+private const val TAG = "NurseryScreen"
+
+private const val HEALTH_CHECK_INTERVAL_MS = 2_000L
+private const val STALE_THRESHOLD_MS = 8_000L
+private const val RECOVERY_COOLDOWN_MS = 15_000L
+private const val HARD_ESCALATION_FAILURES = 2
+
+private enum class RecoveryLevel {
+    SOFT,
+    HARD,
+}
+
+private class RecoveryCallbackHolder {
+    var callback: (RecoveryLevel, String) -> Unit = { _, _ -> }
+}
+
+private class StreamHealthState {
+    var lastRenderedFrameAtMs: Long = 0L
+    var hasRenderedFirstFrame: Boolean = false
+    var lastPosition: Long = 0L
+    var lastPositionAdvanceMs: Long = System.currentTimeMillis()
+    var lastRecoveryAttemptMs: Long = 0L
+    var recoveryAttemptCount: Int = 0
+    var consecutiveHealthFailures: Int = 0
+
+    fun resetTracking() {
+        hasRenderedFirstFrame = false
+        lastRenderedFrameAtMs = 0L
+        lastPosition = 0L
+        lastPositionAdvanceMs = System.currentTimeMillis()
+    }
+}
+
+private fun createLoadControl(): DefaultLoadControl {
+    return DefaultLoadControl.Builder()
+        .setBufferDurationsMs(
+            /* minBufferMs = */ 2_000,
+            /* maxBufferMs = */ 8_000,
+            /* bufferForPlaybackMs = */ 1_000,
+            /* bufferForPlaybackAfterRebufferMs = */ 2_000,
+        )
+        .build()
+}
+
+private fun createNurseryPlayer(
+    context: Context,
+    streamHealth: StreamHealthState,
+    recoveryHolder: RecoveryCallbackHolder,
+): ExoPlayer {
+    return ExoPlayer.Builder(context)
+        .setLoadControl(createLoadControl())
+        .build()
+        .apply {
+            videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
+            repeatMode = Player.REPEAT_MODE_ONE
+
+            setVideoFrameMetadataListener { _, _, _, _ ->
+                streamHealth.lastRenderedFrameAtMs = System.currentTimeMillis()
+                streamHealth.hasRenderedFirstFrame = true
+                streamHealth.consecutiveHealthFailures = 0
+            }
+
+            addListener(object : Player.Listener {
+                override fun onRenderedFirstFrame() {
+                    streamHealth.lastRenderedFrameAtMs = System.currentTimeMillis()
+                    streamHealth.hasRenderedFirstFrame = true
+                    streamHealth.consecutiveHealthFailures = 0
+                    Log.d(TAG, "First frame rendered")
+                }
+
+                override fun onPlayerError(error: PlaybackException) {
+                    Log.e(TAG, "ExoPlayer error: ${error.message}")
+                    Log.e(TAG, "Error type: ${error.errorCode}, cause: ${error.cause?.message}")
+                    recoveryHolder.callback(RecoveryLevel.SOFT, "player_error")
+                }
+
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    when (playbackState) {
+                        Player.STATE_BUFFERING -> Log.d(TAG, "Player buffering")
+                        Player.STATE_READY -> Log.d(TAG, "Player ready")
+                        Player.STATE_ENDED -> {
+                            Log.d(TAG, "Player ended")
+                            recoveryHolder.callback(RecoveryLevel.SOFT, "state_ended")
+                        }
+                        Player.STATE_IDLE -> Log.d(TAG, "Player idle")
+                    }
+                }
+            })
+        }
+}
+
+private fun loadStream(player: ExoPlayer, streamUrl: String) {
+    Log.d(TAG, "Loading RTSP stream: $streamUrl")
+    try {
+        player.stop()
+        player.clearMediaItems()
+
+        val rtspFactory = RtspMediaSource.Factory()
+            .setForceUseRtpTcp(true)
+
+        val mediaSource = rtspFactory.createMediaSource(MediaItem.fromUri(Uri.parse(streamUrl)))
+        player.setMediaSource(mediaSource)
+        player.prepare()
+        player.play()
+        Log.d(TAG, "RTSP stream prepared and playing")
+    } catch (e: Exception) {
+        Log.e(TAG, "Failed to load RTSP stream", e)
+    }
+}
+
+private fun evaluateStreamHealth(player: ExoPlayer, streamHealth: StreamHealthState): String? {
+    val now = System.currentTimeMillis()
+
+    if (player.playerError != null) {
+        return "player_error"
+    }
+
+    when (player.playbackState) {
+        Player.STATE_ENDED -> return "state_ended"
+        Player.STATE_IDLE -> {
+            if (streamHealth.hasRenderedFirstFrame) {
+                return "state_idle"
+            }
+        }
+    }
+
+    if (!streamHealth.hasRenderedFirstFrame) {
+        return null
+    }
+
+    val playbackState = player.playbackState
+    val isPlaying = player.isPlaying
+    val expectsFrames = isPlaying ||
+        playbackState == Player.STATE_READY ||
+        playbackState == Player.STATE_BUFFERING
+
+    if (!expectsFrames) {
+        return null
+    }
+
+    val frameAgeMs = now - streamHealth.lastRenderedFrameAtMs
+    if (frameAgeMs >= STALE_THRESHOLD_MS) {
+        return "frame_stale"
+    }
+
+    if (isPlaying && playbackState == Player.STATE_READY) {
+        val currentPosition = player.currentPosition
+        when {
+            currentPosition < streamHealth.lastPosition -> {
+                streamHealth.lastPosition = currentPosition
+                streamHealth.lastPositionAdvanceMs = now
+            }
+            currentPosition > streamHealth.lastPosition -> {
+                streamHealth.lastPosition = currentPosition
+                streamHealth.lastPositionAdvanceMs = now
+            }
+            now - streamHealth.lastPositionAdvanceMs >= STALE_THRESHOLD_MS -> {
+                return "position_stall"
+            }
+        }
+    }
+
+    return null
+}
 
 @Composable
 fun NurseryScreen(streamUrl: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    
-    // Keep screen on while viewing the nursery camera (full-screen media app behavior)
+    val coroutineScope = rememberCoroutineScope()
+    val streamUrlState = rememberUpdatedState(streamUrl)
+
+    val streamHealth = remember { StreamHealthState() }
+    val recoveryHolder = remember { RecoveryCallbackHolder() }
+
+    var playerGeneration by remember { mutableIntStateOf(0) }
+    var exoPlayer by remember {
+        mutableStateOf(createNurseryPlayer(context, streamHealth, recoveryHolder))
+    }
+
+    recoveryHolder.callback = recovery@{ requestedLevel, reason ->
+        val now = System.currentTimeMillis()
+        if (now - streamHealth.lastRecoveryAttemptMs < RECOVERY_COOLDOWN_MS) {
+            Log.d(
+                TAG,
+                "RECOVER_SKIP reason=$reason cooldownRemainingMs=${streamHealth.lastRecoveryAttemptMs + RECOVERY_COOLDOWN_MS - now}",
+            )
+            return@recovery
+        }
+
+        streamHealth.lastRecoveryAttemptMs = now
+        streamHealth.recoveryAttemptCount++
+        streamHealth.consecutiveHealthFailures++
+
+        val player = exoPlayer
+        val level = if (
+            requestedLevel == RecoveryLevel.SOFT &&
+            streamHealth.consecutiveHealthFailures >= HARD_ESCALATION_FAILURES
+        ) {
+            RecoveryLevel.HARD
+        } else {
+            requestedLevel
+        }
+
+        Log.w(
+            TAG,
+            "HEALTH_FAIL reason=$reason state=${player.playbackState} isPlaying=${player.isPlaying} " +
+                "frameAgeMs=${now - streamHealth.lastRenderedFrameAtMs} " +
+                "attempt=${streamHealth.recoveryAttemptCount} level=$level",
+        )
+
+        streamHealth.resetTracking()
+        val recoveryStartedAt = System.currentTimeMillis()
+
+        when (level) {
+            RecoveryLevel.SOFT -> {
+                loadStream(player, streamUrlState.value)
+                Log.i(
+                    TAG,
+                    "RECOVER_OK level=soft reason=$reason afterMs=${System.currentTimeMillis() - recoveryStartedAt}",
+                )
+            }
+            RecoveryLevel.HARD -> {
+                Log.w(TAG, "RECOVER_FAIL escalating level=hard reason=$reason")
+                val newPlayer = createNurseryPlayer(context, streamHealth, recoveryHolder)
+                exoPlayer = newPlayer
+                playerGeneration++
+                loadStream(newPlayer, streamUrlState.value)
+                Log.i(
+                    TAG,
+                    "RECOVER_OK level=hard reason=$reason afterMs=${System.currentTimeMillis() - recoveryStartedAt}",
+                )
+            }
+        }
+    }
+
     DisposableEffect(Unit) {
         val activity = context as? Activity
         val window = activity?.window
-        
-        // Add FLAG_KEEP_SCREEN_ON to prevent screen timeout
         window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        Log.d("NurseryScreen", "Screen keep-on enabled")
-        
+        Log.d(TAG, "Screen keep-on enabled")
+
         onDispose {
-            // Remove FLAG_KEEP_SCREEN_ON when leaving the screen
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            Log.d("NurseryScreen", "Screen keep-on disabled")
+            Log.d(TAG, "Screen keep-on disabled")
         }
     }
-    
-    // Create and remember ExoPlayer instance
-    val exoPlayer = remember {
-        ExoPlayer.Builder(context).build().apply {
-            // Configure video scaling for full-screen display
-            videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
-            // Enable repeat mode to keep stream playing
-            repeatMode = Player.REPEAT_MODE_ONE
-            // Add error listener
-            addListener(object : Player.Listener {
-                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                    Log.e("NurseryScreen", "ExoPlayer error: ${error.message}")
-                    Log.e("NurseryScreen", "Error type: ${error.errorCode}, cause: ${error.cause?.message}")
-                    error.cause?.printStackTrace()
-                }
-                
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    when (playbackState) {
-                        Player.STATE_BUFFERING -> Log.d("NurseryScreen", "Player buffering")
-                        Player.STATE_READY -> Log.d("NurseryScreen", "Player ready")
-                        Player.STATE_ENDED -> Log.d("NurseryScreen", "Player ended")
-                        Player.STATE_IDLE -> Log.d("NurseryScreen", "Player idle")
-                    }
-                }
-            })
+
+    DisposableEffect(exoPlayer) {
+        onDispose {
+            Log.d(TAG, "Releasing ExoPlayer generation=$playerGeneration")
+            exoPlayer.release()
         }
     }
-    
-    // Function to load/reload the RTSP stream
-    val loadStream: () -> Unit = {
-        Log.d("NurseryScreen", "Loading RTSP stream: $streamUrl")
-        try {
-            // Stop and clear any existing media
-            exoPlayer.stop()
-            exoPlayer.clearMediaItems()
-            
-            val uri = Uri.parse(streamUrl)
-            // Create RTSP media source factory with TCP transport (more reliable than UDP)
-            // TCP is required by many RTSP servers to avoid firewall/NAT issues
-            val rtspFactory = RtspMediaSource.Factory()
-                .setForceUseRtpTcp(true) // Use TCP instead of UDP for RTP transport
-            
-            val mediaItem = MediaItem.fromUri(uri)
-            val mediaSource = rtspFactory.createMediaSource(mediaItem)
-            
-            exoPlayer.setMediaSource(mediaSource)
-            exoPlayer.prepare()
-            exoPlayer.play()
-            Log.d("NurseryScreen", "RTSP stream prepared and playing")
-        } catch (e: Exception) {
-            Log.e("NurseryScreen", "Failed to load RTSP stream", e)
-            e.printStackTrace()
-        }
-    }
-    
-    // Set media source when URL changes
+
     LaunchedEffect(streamUrl) {
-        loadStream()
+        streamHealth.resetTracking()
+        loadStream(exoPlayer, streamUrl)
     }
-    
-    // Freeze detection: Monitor player position to detect frozen streams
-    // Track last known position and timestamp for freeze detection
-    var lastPosition by remember { mutableStateOf(0L) }
-    var lastPositionTime by remember { mutableStateOf(System.currentTimeMillis()) }
-    
-    // Position monitoring coroutine - detects when stream freezes
-    LaunchedEffect(exoPlayer, lifecycleOwner.lifecycle.currentState) {
-        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-            while (isActive) {
-                delay(2000) // Check every 2 seconds
-                
-                val currentState = exoPlayer.playbackState
-                val isPlaying = exoPlayer.isPlaying
-                val currentPosition = exoPlayer.currentPosition
-                
-                // Only monitor if player is actively playing
-                if (isPlaying && (currentState == Player.STATE_READY || currentState == Player.STATE_BUFFERING)) {
-                    val now = System.currentTimeMillis()
-                    
-                    // Handle position resets (stream restart) - treat as position advance
-                    if (currentPosition < lastPosition) {
-                        // Position reset - stream likely restarted, update tracking
-                        lastPosition = currentPosition
-                        lastPositionTime = now
-                    } else if (currentPosition > lastPosition) {
-                        // Position advanced - stream is healthy
-                        lastPosition = currentPosition
-                        lastPositionTime = now
-                    } else {
-                        // Position hasn't advanced - check if frozen
-                        val timeSinceLastAdvance = now - lastPositionTime
-                        if (timeSinceLastAdvance >= 5000) { // 5 second threshold
-                            Log.w("NurseryScreen", "Stream freeze detected - position stalled for ${timeSinceLastAdvance}ms")
-                            loadStream() // Trigger recovery
-                            lastPositionTime = now // Reset timer
-                            // Reset position tracking after recovery attempt
-                            lastPosition = 0L
-                        }
-                    }
-                } else {
-                    // Reset tracking when not playing
-                    lastPosition = currentPosition
-                    lastPositionTime = System.currentTimeMillis()
-                }
+
+    LaunchedEffect(lifecycleOwner) {
+        while (isActive) {
+            delay(HEALTH_CHECK_INTERVAL_MS)
+            if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                continue
+            }
+
+            val failureReason = evaluateStreamHealth(exoPlayer, streamHealth)
+            if (failureReason != null) {
+                recoveryHolder.callback(RecoveryLevel.SOFT, failureReason)
             }
         }
     }
-    
-    // Reset position tracking when stream is manually reloaded
-    LaunchedEffect(streamUrl) {
-        lastPosition = 0L
-        lastPositionTime = System.currentTimeMillis()
-    }
-    
-    // Handle lifecycle events - reconnect stream when app resumes
-    DisposableEffect(lifecycleOwner) {
+
+    DisposableEffect(lifecycleOwner, exoPlayer) {
+        val player = exoPlayer
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_RESUME -> {
-                    Log.d("NurseryScreen", "App resumed - checking stream connection")
-                    // Use coroutine scope with Main dispatcher to check state after a brief delay
-                    // Player state might not be immediately updated when lifecycle event fires
-                    try {
-                        CoroutineScope(Dispatchers.Main).launch {
-                            try {
-                                delay(100) // Small delay to let player state stabilize
-                                
-                                val playbackState = exoPlayer.playbackState
-                                val isPlaying = exoPlayer.isPlaying
-                                val hasError = exoPlayer.playerError != null
-                                
-                                Log.d("NurseryScreen", "Player state after resume: playbackState=$playbackState, isPlaying=$isPlaying, hasError=$hasError")
-                                
-                                // Check if we need to reconnect
-                                val needsReconnect = playbackState == Player.STATE_IDLE || 
-                                                    playbackState == Player.STATE_ENDED || 
-                                                    hasError ||
-                                                    (!isPlaying && playbackState != Player.STATE_BUFFERING)
-                                
-                                // Always restart stream on resume to ensure proper surface attachment
-                                // RTSP streams need fresh connection after background
-                                Log.d("NurseryScreen", "Restarting stream on resume to ensure proper surface attachment")
-                                loadStream()
-                            } catch (e: Exception) {
-                                Log.e("NurseryScreen", "Error in resume check coroutine", e)
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.e("NurseryScreen", "Error launching resume check coroutine", e)
+                    Log.d(TAG, "App resumed - restarting stream for surface attachment")
+                    coroutineScope.launch {
+                        delay(100)
+                        streamHealth.resetTracking()
+                        loadStream(player, streamUrlState.value)
                     }
                 }
                 Lifecycle.Event.ON_PAUSE -> {
-                    Log.d("NurseryScreen", "App paused - pausing player")
-                    // Pause player when going to background
-                    if (exoPlayer.isPlaying) {
-                        exoPlayer.pause()
+                    Log.d(TAG, "App paused - pausing player")
+                    if (player.isPlaying) {
+                        player.pause()
                     }
                 }
-                else -> {}
+                else -> Unit
             }
         }
-        
+
         lifecycleOwner.lifecycle.addObserver(observer)
-        
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
-    
-    // Handle lifecycle - release player when composable is disposed
-    DisposableEffect(Unit) {
-        onDispose {
-            Log.d("NurseryScreen", "Releasing ExoPlayer")
-            exoPlayer.release()
-        }
+
+    key(playerGeneration) {
+        AndroidView(
+            modifier = modifier.fillMaxSize(),
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    player = exoPlayer
+                    useController = false
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                }
+            },
+            update = { view ->
+                if (view.player != exoPlayer) {
+                    view.player = exoPlayer
+                }
+            },
+        )
     }
-    
-    // Embed PlayerView in Compose
-    AndroidView(
-        modifier = modifier.fillMaxSize(),
-        factory = { ctx ->
-            PlayerView(ctx).apply {
-                player = exoPlayer
-                useController = false // Hide controls for full-screen video
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-            }
-        },
-        update = { view ->
-            // Ensure player is always attached
-            if (view.player != exoPlayer) {
-                view.player = exoPlayer
-            }
-        }
-    )
 }
