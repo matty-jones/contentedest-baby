@@ -308,6 +308,7 @@ class MainActivity : ComponentActivity() {
                                         if (selectedTab == 2) {
                                             WordsStatsBar(
                                                 wordRepository = wordRepository,
+                                                dobEpochDays = dobEpochDays,
                                                 reloadToken = wordsReloadToken,
                                                 modifier = Modifier.fillMaxWidth()
                                             )

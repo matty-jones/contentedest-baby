@@ -8,7 +8,7 @@ Implemented fuzzy search, DOB-based vocabulary percentile curves, Growth DOB anc
 - **DOB setting**: Settings screen date picker writes `settings.dob_epoch_days` via `SettingsRepository`, and **pushes/pulls a singleton server `baby_profile`** (`GET/POST /baby-profile`) so all devices share one DOB. SyncWorker pulls profile each sync; MainActivity observes Room Flow for live updates.
 - **Growth age**: Weight/height percentiles and stats age from DOB when set; fall back to first measurement if unset (`dobEpochSeconds` + `calculateAgeMonths`).
 - **Fuzzy search**: Local Levenshtein ratio matcher in `WordFuzzyMatcher` (FuzzyKot was incompatible with Room/kapt Kotlin 2.0.21 metadata). Search button beside Add Word; scroll + brief highlight on hit.
-- **Vocab percentiles**: `VocabularyPercentileCalculator` (16–30 mo, log1p interp, hard null outside range). `PercentileLineStyles` shared with Growth fade/stroke recipe. Overlay on Words graph when DOB is set.
+- **Vocab percentiles**: `VocabularyPercentileCalculator` (16–30 mo, log1p interp, hard null outside range). Inverse `percentileForCount` for footer display. `PercentileLineStyles` shared with Growth fade/stroke recipe. Overlay on Words graph when DOB is set. Stats bar: `N words (P.Pth %ile) · MA-B: ...`.
 - **MA-B**: Room migration 4→5 + server `understands`/`says` columns (startup ALTER). Checklist of 89 words. Live radios on Add/Edit when fuzzy-match. List `*` indicators (secondary=Understood, tertiary=Said). Stats bar `MA-B: X/89 Understood, Y/89 Said`. Duplicate word with different flags upserts MA-B. One-time Says backfill on app start.
 
 ### Key files

@@ -33,6 +33,23 @@ class VocabularyPercentileCalculatorTest {
         assertTrue(mid > low)
         assertTrue(mid < high)
     }
+
+    @Test
+    fun percentileForCountHitsKnotAndInterpolates() {
+        val p50 = VocabularyPercentileCalculator.valueAtAge(50, 24.0)!!
+        assertEquals(50.0, VocabularyPercentileCalculator.percentileForCount(p50, 24.0)!!, 0.01)
+
+        val p25 = VocabularyPercentileCalculator.valueAtAge(25, 24.0)!!
+        val midCount = (p25 + p50) / 2.0
+        val pct = VocabularyPercentileCalculator.percentileForCount(midCount, 24.0)!!
+        assertEquals(37.5, pct, 0.5)
+    }
+
+    @Test
+    fun percentileForCountNullOutsideAgeWindow() {
+        assertNull(VocabularyPercentileCalculator.percentileForCount(100.0, 15.0))
+        assertNull(VocabularyPercentileCalculator.percentileForCount(100.0, 31.0))
+    }
 }
 
 class WordFuzzyMatcherTest {
