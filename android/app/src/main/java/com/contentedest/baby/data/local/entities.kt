@@ -121,7 +121,9 @@ data class BabyWordEntity(
     val created_ts: Long,
     val updated_ts: Long,
     val version: Int,
-    val deleted: Boolean = false
+    val deleted: Boolean = false,
+    val understands: Boolean = false,
+    val says: Boolean = false
 )
 
 

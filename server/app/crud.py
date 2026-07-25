@@ -42,6 +42,8 @@ _WORD_UPSERT_FIELDS = (
     "updated_ts",
     "version",
     "deleted",
+    "understands",
+    "says",
 )
 
 

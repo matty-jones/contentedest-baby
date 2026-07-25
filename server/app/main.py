@@ -5,6 +5,7 @@ import logging
 from fastapi import FastAPI, Request
 
 from .database import Base, SessionLocal, engine
+from .migrate_schema import migrate_schema
 from .routers import (
     growth_router,
     health_admin_router,
@@ -33,6 +34,7 @@ async def log_requests(request: Request, call_next):
 
 
 Base.metadata.create_all(bind=engine)
+migrate_schema(engine)
 
 
 @app.on_event("startup")

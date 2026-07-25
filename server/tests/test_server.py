@@ -215,6 +215,8 @@ async def test_words_conflict_resolution_and_pull_filters():
             "updated_ts": now - 120,
             "version": 1,
             "deleted": False,
+            "understands": False,
+            "says": False,
         }
         r1 = await ac.post("/words", json=first)
         assert r1.status_code == 200
@@ -239,11 +241,15 @@ async def test_words_conflict_resolution_and_pull_filters():
         newer["updated_ts"] = now
         newer["version"] = 2
         newer["device_id"] = device_b
+        newer["understands"] = True
+        newer["says"] = True
         r3 = await ac.post("/words", json=newer)
         assert r3.status_code == 200
         latest_payload = r3.json()
         assert latest_payload["data"]["word"] == newer["word"]
         assert latest_payload["data"]["version"] == newer["version"]
+        assert latest_payload["data"]["understands"] is True
+        assert latest_payload["data"]["says"] is True
         assert latest_payload["server_clock"] > initial_clock
 
         r4 = await ac.get("/words?since=0")
@@ -251,6 +257,8 @@ async def test_words_conflict_resolution_and_pull_filters():
         rows = [d for d in r4.json()["data"] if d["id"] == word_id]
         assert len(rows) == 1
         assert rows[0]["word"] == newer["word"]
+        assert rows[0]["says"] is True
+        assert rows[0]["understands"] is True
 
         r5 = await ac.get(f"/words?since={initial_clock}")
         assert r5.status_code == 200

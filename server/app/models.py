@@ -75,6 +75,8 @@ class BabyWord(Base):
     updated_ts: Mapped[int] = mapped_column(Integer, nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    understands: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    says: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     server_clock: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 

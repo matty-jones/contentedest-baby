@@ -7,6 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.contentedest.baby.data.local.AppDatabase
 import com.contentedest.baby.data.repo.EventRepository
 import com.contentedest.baby.data.repo.GrowthRepository
+import com.contentedest.baby.data.repo.SettingsRepository
 import com.contentedest.baby.data.repo.WordRepository
 // import com.contentedest.baby.data.repo.SyncRepository // Assuming this isn't used directly in AppModule now
 import com.contentedest.baby.net.TokenStorage
@@ -79,8 +80,19 @@ object AppModule {
             }
         }
 
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `baby_words` ADD COLUMN `understands` INTEGER NOT NULL DEFAULT 0"
+                )
+                db.execSQL(
+                    "ALTER TABLE `baby_words` ADD COLUMN `says` INTEGER NOT NULL DEFAULT 0"
+                )
+            }
+        }
+
         return Room.databaseBuilder(context, AppDatabase::class.java, "tcb.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .build()
     }
 
@@ -97,6 +109,11 @@ object AppModule {
     @Singleton
     fun provideWordRepository(db: AppDatabase, api: com.contentedest.baby.net.ApiService): WordRepository =
         WordRepository(db.babyWordDao(), api)
+
+    @Provides
+    @Singleton
+    fun provideSettingsRepository(db: AppDatabase): SettingsRepository =
+        SettingsRepository(db.settingsDao())
 
     @Provides
     @Singleton

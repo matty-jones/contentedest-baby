@@ -1,176 +1,21 @@
-# Progress
-
-## 2026-07-02 — Nursery: overnight RTSP freeze recovery
-
-**Problem:** Live Nursery feed freezes after many hours (~1x/24h). Tab-switch fixes it; position-stall watchdog (`51fc45c`) did not fire because ExoPlayer can stay `STATE_READY`/`isPlaying` while frames stop rendering (Media3 RTSP zombie playback).
-
-**Change:** Refactored `NurseryScreen.kt`:
-- `VideoFrameMetadataListener` + `onRenderedFirstFrame` track actual frame presentation (primary health signal).
-- Unified health check every 2s: frame stale (8s), position stall (secondary), player error, ended/idle.
-- Escalating recovery: soft `loadStream()` first; hard recreate (release + new ExoPlayer + PlayerView rebind) after 2 consecutive failures.
-- 15s recovery cooldown; structured `HEALTH_FAIL` / `RECOVER_OK` / `RECOVER_SKIP` logs.
-- `onPlayerError` and `STATE_ENDED` trigger recovery.
-- Smaller `DefaultLoadControl` buffers (2–8s) for long-running live RTSP.
-
-**Verify:** `cd android && ./gradlew :app:compileDebugKotlin`. Manual: induce RTSP stall (stop go2rtc briefly) and confirm auto-recover within ~8–16s; overnight soak on tablet. Capture `adb logcat -s NurseryScreen:*` if freeze recurs.
-
-## 2026-04-15 — Words: edit and delete flow with sync
-
-**Change:** Added word-card tap editing in the Words list. New `EditWordDialog` preloads word text and first-said date, allows updating both fields, and includes a destructive delete action with a confirmation `AlertDialog`. `WordsScreen` now tracks selected word state and refreshes the list/graph after save or delete.
-
-**Sync plumbing:** `WordRepository` now supports `updateWord(id, word, ts)` (local upsert with `updated_ts` + `version + 1`, then `syncPush`) plus duplicate checks that exclude the current word id (`hasWordCaseInsensitiveExceptId`). Delete remains soft-delete + sync push. `WordsScreen` triggers immediate sync after edit/delete.
-
-**Verify:** `source .venv/bin/activate && cd android && ./gradlew :app:compileDebugKotlin :app:compileReleaseKotlin`.
-
-## 2026-04-14 — Release script: patch `updates.py`; baseline 36 / 1.5.6 before bump to 1.6.0 (37)
-
-**Cause:** After the server refactor, `GET /app/update` reads `version_code` / `version_name` from `server/app/routers/updates.py`, but `./release_application` still ran `sed` on `server/app/main.py`, which no longer contains those fields. New APKs were copied to `server/apks/latest.apk` while the API kept advertising the old version, so clients never saw an update.
-
-**Change:** `release_application` now updates `SERVER_UPDATES_PY` (`server/app/routers/updates.py`) via `update_server_updates_py`.
-
-**To ship 1.6.0 (37) via the script:** Keep `build.gradle.kts` and `updates.py` at **36 / 1.5.6**, then run `./release_application` with **no flags** (default = semver *minor* bump: 1.5.6 → 1.6.0, versionCode 36 → 37). **Do not** pass `--minor`: in this script that flag means *patch* bump (1.5.6 → 1.5.7), not semver minor.
-
-**One-time repair on deployed host:** After release, deployed `updates.py` should show `version_code=37`, `version_name="1.6.0"`; `server/apks/latest.apk` must be that build; restart the service. Verify: `curl -s http://HOST:8005/app/update`.
-
-**Verify:** `source .venv/bin/activate && PYTHONPATH=server pytest -q server/tests`.
-
-## 2026-04-14 — Track `WordRepository.kt`: fix `.gitignore` `data` rule
-
-**Cause:** Root `.gitignore` had a bare `data` entry, which ignores **any** path segment named `data`, including `android/.../com/contentedest/baby/data/`. New files under that package (notably `WordRepository.kt`) were never added to git, so clones and release builds failed with unresolved `WordRepository`.
-
-**Change:** Replace `data` with `/data` so only a **repository-root** `data/` directory is ignored. Add and commit `android/app/src/main/java/com/contentedest/baby/data/repo/WordRepository.kt`.
-
-**Verify:** `./gradlew :app:compileReleaseKotlin` from `android/`.
-
-## 2026-04-14 — Words UI: title-case labels and date-based vocabulary graph
-
-**Change:** Word cards use `String.displayWordTitleCase()` (locale-aware first-character title case via `WordDisplay.kt`). `WordsGraphView` no longer plots one point per word index; it builds one point per **calendar day** from the first word’s local date through `max(last word date, today)`, with **y = cumulative count** of words whose `ts` falls before the start of the next day (end-of-day total). Horizontal segments appear on days with no new words; steps occur when new words are logged.
-
-**Verify:** From `android/`, `./gradlew :app:compileDebugKotlin`.
-
-## 2026-04-14 — Single default SQLite path: `server/db/data.db`
-
-**Change:** `server/app/database.py` default `DB_PATH` is now `server/db/data.db` (was `server/data.db`). Scripts that embedded `server/data.db` as a fallback (`find_duplicate_sleep_events.py`, `audit_sleep_duplicates.py`) use the same path. README examples updated. Dockerfile default `TCB_DB_PATH` aligned with docker-compose (`/app/server/db/data.db`). Removed `server/db` from `.gitignore` so the directory can be tracked; `*.db*` still ignores SQLite files.
-
-**Migrate old data:** if you still have `server/data.db`, move or copy it to `server/db/data.db` (create `server/db/` first) then remove the old file if desired.
-
-## 2026-04-14 — Words sync: empty `baby_words` on pulled DB
-
-**Finding:** `server/db/data.db` (copy pulled from the host) has `baby_words` table present but **0 rows**. `GET /words?since=0` therefore returns an empty list; the app logs `No new words to sync` and shows "No words yet". The default API DB path is `server/db/data.db` (see `server/app/database.py`, `DB_PATH` / `TCB_DB_PATH`). If `import_words.py` was run with a different `TCB_DB_PATH` than the running uvicorn process, words land in a different file than the API serves.
-
-**Check on host:** `sqlite3 "$TCB_DB_PATH" 'SELECT COUNT(*) FROM baby_words;'` (or the default `server/db/data.db`). Re-run import against that same path.
-
-## 2026-04-13 — Words UI: Add word button and date-only dialog; import script
-
-**Change:** Words screen uses a full-width "Add word" button (replacing the FAB). Add dialog only asks for the word and the date first said (defaults to today); timestamp is start of local day. Added `server/scripts/import_words.py` plus `server/scripts/example_words_seed.json` for bulk seeding `baby_words` (JSON array of `word` + `date` YYYY-MM-DD, UTC midnight; `--dry-run` supported).
-
-**Verify:** `./gradlew :app:compileDebugKotlin` from `android/`. `python3 server/scripts/import_words.py --device-id ID --dry-run server/scripts/example_words_seed.json`.
-
-## 2026-04-13 — Words tab (vocabulary tracking)
-
-**Change:** Fourth main tab "Words" (Timeline, Growth, Words, Nursery) with List (two-column grid, newest first) and Graph (cumulative word count over time, Vico chart with scroll-to-recent). Room table `baby_words` (migration 3 to 4), `WordRepository`, push on save and pull in `SyncWorker`. FastAPI `POST /words` and `GET /words?since=` mirroring growth conflict resolution and server clock. Nursery tab renumbered to index 3 (landscape + `NavigationRail` updated).
-
-**Verify:** From `android/`, `./gradlew :app:testDebugUnitTest`. From repo root with venv, `PYTHONPATH=server pytest -q server/tests` (21 tests).
-
-## 2026-04-13 — Timeline date picker and navigation icons
-
-**Change:** On the Timeline screen, tapping the formatted date (e.g. "Friday, 10th April") opens the Material3 `DatePickerDialog` with the current day selected, plus a "Today" action that jumps to the current date. Previous/next day controls use `IconButton` with `KeyboardArrowLeft` / `KeyboardArrowRight` (same pattern as Daily Log) instead of raw `<` / `>` text.
-
-**Timezone:** Material3 `DatePicker` uses UTC midnight for `selectedDateMillis`. Initial millis and OK handling use `ZoneOffset.UTC` when converting to/from `LocalDate` so regions behind UTC (e.g. GMT-7) do not get a one-day shift. `GrowthDatePickerDialog` OK handling uses the same UTC conversion.
-
-**Verify:** `./gradlew :app:compileDebugKotlin` from `android/`.
-
-## 2026-04-13 — Refactor Wave 1 baseline
-
-**Scope:** Scripts + server refactor wave started from approved plan. No refactor edits applied yet.
-
-**Environment:** Created repo-local `.venv` and installed `server/requirements.txt`.
-
-**Baseline verify:** From repo root, `source .venv/bin/activate && PYTHONPATH=server pytest -q server/tests`.
-
-**Result:** `15 passed` in ~0.43s, with pre-existing warnings:
-- `pytest-asyncio` deprecation about `asyncio_default_fixture_loop_scope` unset.
-- FastAPI deprecation for `@app.on_event("startup")` in `server/app/main.py`.
-
-## 2026-04-13 — Refactor Wave 1 implementation
-
-**Tests added before refactor:**
-- `server/tests/test_server.py`: characterization coverage for sync adjacent-merge behavior and growth conflict/pull behavior (including `since=0` without category).
-- `server/tests/test_script_time_and_timezone.py`: script characterization tests for shared datetime parsing and `fix_timezone_offset.py` end-to-end timestamp shift.
-
-**Server refactor:**
-- Split monolithic `server/app/main.py` into focused modules:
-  - `server/app/routers/health_admin.py`
-  - `server/app/routers/webhook.py`
-  - `server/app/routers/sync.py`
-  - `server/app/routers/updates.py`
-  - `server/app/routers/growth.py`
-  - `server/app/seed.py`
-- `server/app/main.py` is now app wiring + middleware + startup seed hook.
-
-**Deduplication:**
-- Added `server/app/timeparse.py` for shared UTC-7 parsing.
-- Updated `import_data.py`, `migrate_database.py`, and `server/app/seed.py` to use shared parsing logic.
-- Reduced duplicate upsert field-copy logic in `server/app/crud.py` with shared helpers for resolve paths.
-
-**Cleanup:**
-- Removed large diagnostic/debug-only branch from growth pull fallback path, replacing it with direct non-deleted query logic.
-- Trimmed verbose historical parsing commentary to concise intent-level docstrings in import/migration paths.
-
-**Bugs found/fixed:** No behavioral bugs detected during this wave.
-
-**Final verify:** `source .venv/bin/activate && PYTHONPATH=server pytest -q server/tests` → `20 passed`, same 2 pre-existing warnings (`pytest-asyncio` loop-scope deprecation and FastAPI `on_event` deprecation).
-
-## 2026-04-13 — Refactor Wave 2 (Android only, no CI changes)
-
-**Baseline status:**
-- Ran `source ../.venv/bin/activate && ./gradlew :app:testDebugUnitTest` from `android/`.
-- Found 5 failing pre-existing tests in `RoomBasicsTest`, `EventRepositoryTest`, and `NetworkTests`.
-
-**Bugs fixed before new refactor/tests:**
-- Added Robolectric runner annotations to Room-based JVM tests:
-  - `android/app/src/test/java/com/contentedest/baby/RoomBasicsTest.kt`
-  - `android/app/src/test/java/com/contentedest/baby/EventRepositoryTest.kt`
-- Fixed mock JSON field names in `android/app/src/test/java/com/contentedest/baby/NetworkTests.kt` to match Moshi model annotations (`server_clock`, `event_id`).
-
-**New characterization tests:**
-- Added `android/app/src/test/java/com/contentedest/baby/GrowthPercentileCalculatorTest.kt` covering:
-  - median-to-50th-percentile behavior at known LMS medians
-  - weight unit consistency (`lb` vs `kg`)
-  - percentile round-trip behavior
-  - unsupported-unit/category null behavior
-
-**Android cleanup/refactor (no behavior change):**
-- `android/app/src/main/java/com/contentedest/baby/data/repo/EventRepository.kt`
-  - extracted repeated payload parsing into helper methods (`parseFeedMode`, `payloadNumberToInt`)
-  - removed unnecessary fully-qualified type usage and redundant comments
-- `android/app/src/main/java/com/contentedest/baby/ui/growth/GrowthPercentileCalculator.kt`
-  - trimmed verbose historical/math exposition comments down to concise intent-level comments
-
-**Verification:**
-- Re-ran `./gradlew :app:testDebugUnitTest` after each change set.
-- Final Android unit-test result: **BUILD SUCCESSFUL** (all unit tests passing).
-
-## 2026-04-08 — Crib webhook sleep policy and adjacent merge
-
-**Goal:** Reduce Frigate/HA noise: ignore very short “sleep” segments from the crib webhook, merge sleep/feed fragments that are within 60s or overlap, and provide DB maintenance scripts.
-
-**Server behavior:** `app/event_policy.py` defines `MIN_CRIB_WEBHOOK_SLEEP_SECONDS` (300), `ADJACENT_MERGE_GAP_SECONDS` (60), and merge helpers. `close_crib_webhook_sleep` soft-deletes closed crib sleeps under 5 minutes; otherwise closes and runs `merge_adjacent_chain`. Sync push runs the same merge after upserting closed sleep or feed rows. Manual timeline / sync paths do not apply the 5-minute discard.
-
-**Webhook:** `POST /webhook/crib` returns `action: "discarded"` with the soft-deleted `event_id` when duration is under 5 minutes; see `CribWebhookResponse` in `app/schemas.py`.
-
-**Scripts (run against DB backup, consolidate before delete-short):** `server/scripts/consolidate_adjacent_events.py` (only rows with `start_ts` on or after 2026-01-01 UTC; live crib/sync merge has no such cutoff; apply mode uses `try_merge_first_mergeable_pair_for_device_type` / `merge_adjacent_sorted_pair` so it does not run the expensive overlap query per merge), `server/scripts/delete_short_sleep_events.py`.
-
-**Tests:** `tests/test_event_policy.py` (merge rules); `tests/test_server.py` uses `httpx.ASGITransport` with `AsyncClient` (httpx 0.28+), and monkeypatches `time.time` for crib close vs discard.
-
-**Verify:** From `server/`, `PYTHONPATH=. pytest tests/test_event_policy.py tests/test_server.py`.
-
-## 2026-04-08 — Snake timeline row connectors
-
-**Issue:** Long sleep (or any) events spanning multiple rows could draw the curved row-to-row connector on the wrong side (e.g. right on an R→L row where the white track turns left).
-
-**Cause:** Connector X was chosen from `touchesPhysicalLeft` / `touchesPhysicalRight` derived from exact `startFrac == 0f` and `endFrac == 1f`. Slight float error or boundary semantics made `touchesRowEnd` false on R→L rows while `touchesRowStart` stayed true, so the code picked `innerRight` (wrong).
-
-**Fix:** In `SnakeTimeline.kt` `computeEventDrawables`, emit a connector only when `continues && segEnd == rowEndSec` (integer row boundary), and set `edgeX` / `cpX` from `goingRight` only (`innerRight` + offset when L→R, else `innerLeft` - offset).
-
-**Verify:** `./gradlew :app:compileDebugKotlin` from `android/`.
+# Contentedest Baby — Progress
+
+## Latest: Words Counter Improvements (2026-07-25)
+
+Implemented fuzzy search, DOB-based vocabulary percentile curves, Growth DOB anchoring, and MacArthur-Bates Short Form Level I (MA-B) Understood/Said metadata.
+
+### Done
+- **DOB setting**: Settings screen date picker writes `settings.dob_epoch_days` via `SettingsRepository`.
+- **Growth age**: Weight/height percentiles and stats age from DOB when set; fall back to first measurement if unset (`dobEpochSeconds` + `calculateAgeMonths`).
+- **Fuzzy search**: Local Levenshtein ratio matcher in `WordFuzzyMatcher` (FuzzyKot was incompatible with Room/kapt Kotlin 2.0.21 metadata). Search button beside Add Word; scroll + brief highlight on hit.
+- **Vocab percentiles**: `VocabularyPercentileCalculator` (16–30 mo, log1p interp, hard null outside range). `PercentileLineStyles` shared with Growth fade/stroke recipe. Overlay on Words graph when DOB is set.
+- **MA-B**: Room migration 4→5 + server `understands`/`says` columns (startup ALTER). Checklist of 89 words. Live radios on Add/Edit when fuzzy-match. List `*` indicators (secondary=Understood, tertiary=Said). Stats bar `MA-B: X/89 Understood, Y/89 Said`. Duplicate word with different flags upserts MA-B. One-time Says backfill on app start.
+
+### Key files
+- Android: `SettingsScreen`, `SettingsRepository`, `GrowthScreen`, `WordsScreen`, `WordsGraphView`, `WordsListView`, `AddWordDialog`, `EditWordDialog`, `SearchWordDialog`, `WordsStatsBar`, `WordFuzzyMatcher`, `MacArthurBatesChecklist`, `VocabularyPercentileCalculator`, `PercentileLineStyles`, `WordRepository`, `AppModule` (MIGRATION_4_5)
+- Server: `models.BabyWord`, `schemas.WordDTO`, `routers/words.py`, `migrate_schema.py`, `crud._WORD_UPSERT_FIELDS`
+
+### Notes for next agents
+- Set DOB in Settings before vocab percentile lines appear.
+- Said always stores `understands=true` and `says=true`.
+- Vocab norms are male / American English, informational only (Mayor & Plunkett–style table).

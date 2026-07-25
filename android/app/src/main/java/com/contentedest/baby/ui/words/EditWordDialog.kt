@@ -51,6 +51,18 @@ fun EditWordDialog(
     var showDeleteConfirmation by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
+    var mabStatus by remember(wordEntity.id) {
+        mutableStateOf(
+            when {
+                wordEntity.says -> MabStatus.SAID
+                else -> MabStatus.UNDERSTOOD
+            }
+        )
+    }
+
+    val isMabMatch = remember(wordText) {
+        WordFuzzyMatcher.matchesMab(wordText)
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -84,6 +96,13 @@ fun EditWordDialog(
                         }
                     }
                 )
+
+                if (isMabMatch) {
+                    MabStatusRadioGroup(
+                        selected = mabStatus,
+                        onSelected = { mabStatus = it }
+                    )
+                }
 
                 Text(text = "Date first said", style = MaterialTheme.typography.titleMedium)
                 OutlinedButton(
@@ -119,10 +138,18 @@ fun EditWordDialog(
                                     isLoading = false
                                     return@launch
                                 }
+                                val understands = isMabMatch
+                                val says = isMabMatch && mabStatus == MabStatus.SAID
                                 val ts = selectedDate
                                     .atStartOfDay(zone)
                                     .toEpochSecond()
-                                wordRepository.updateWord(wordEntity.id, trimmed, ts)
+                                wordRepository.updateWord(
+                                    id = wordEntity.id,
+                                    word = trimmed,
+                                    ts = ts,
+                                    understands = understands,
+                                    says = says
+                                )
                                 isLoading = false
                                 onSaved()
                             }

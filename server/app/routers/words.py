@@ -15,6 +15,21 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+def _to_dto(w: BabyWord) -> WordDTO:
+    return WordDTO(
+        id=w.id,
+        device_id=w.device_id,
+        word=w.word,
+        ts=w.ts,
+        created_ts=w.created_ts,
+        updated_ts=w.updated_ts,
+        version=w.version,
+        deleted=w.deleted,
+        understands=bool(w.understands),
+        says=bool(w.says),
+    )
+
+
 @router.post("/words", response_model=WordPushResponse)
 def create_word(data: WordDTO, db: Session = Depends(get_db)):
     logger.info("Word push: %s (%s)", data.id, data.word)
@@ -27,21 +42,12 @@ def create_word(data: WordDTO, db: Session = Depends(get_db)):
         updated_ts=data.updated_ts,
         version=data.version,
         deleted=data.deleted,
+        understands=data.understands,
+        says=data.says,
     )
     applied_data, new_clock = crud.upsert_baby_word(db, incoming)
     logger.info("Applied word %s, new clock: %s", applied_data.id, new_clock)
-
-    result_dto = WordDTO(
-        id=applied_data.id,
-        device_id=applied_data.device_id,
-        word=applied_data.word,
-        ts=applied_data.ts,
-        created_ts=applied_data.created_ts,
-        updated_ts=applied_data.updated_ts,
-        version=applied_data.version,
-        deleted=applied_data.deleted,
-    )
-    return WordPushResponse(server_clock=new_clock, applied=True, data=result_dto)
+    return WordPushResponse(server_clock=new_clock, applied=True, data=_to_dto(applied_data))
 
 
 @router.get("/words", response_model=WordPullResponse)
@@ -59,18 +65,4 @@ def get_words(since: int = 0, db: Session = Depends(get_db)):
 
     current_clock = crud.get_clock(db)
     logger.info("Returning %s word entries, clock=%s", len(data_list), current_clock)
-
-    payload = [
-        WordDTO(
-            id=w.id,
-            device_id=w.device_id,
-            word=w.word,
-            ts=w.ts,
-            created_ts=w.created_ts,
-            updated_ts=w.updated_ts,
-            version=w.version,
-            deleted=w.deleted,
-        )
-        for w in data_list
-    ]
-    return WordPullResponse(server_clock=current_clock, data=payload)
+    return WordPullResponse(server_clock=current_clock, data=[_to_dto(w) for w in data_list])

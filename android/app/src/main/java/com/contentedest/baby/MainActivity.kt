@@ -31,6 +31,7 @@ import com.contentedest.baby.data.local.EventType
 import com.contentedest.baby.data.local.EventEntity
 import com.contentedest.baby.data.repo.EventRepository
 import com.contentedest.baby.data.repo.GrowthRepository
+import com.contentedest.baby.data.repo.SettingsRepository
 import com.contentedest.baby.data.repo.WordRepository
 import com.contentedest.baby.sync.SyncWorker
 import com.contentedest.baby.ui.timeline.TimelineScreen
@@ -64,6 +65,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var eventRepository: EventRepository
     @Inject lateinit var growthRepository: GrowthRepository
     @Inject lateinit var wordRepository: WordRepository
+    @Inject lateinit var settingsRepository: SettingsRepository
     @Inject lateinit var updateChecker: UpdateChecker
     
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -138,6 +140,9 @@ class MainActivity : ComponentActivity() {
                         ) ?: "device-${System.currentTimeMillis()}"
                     }
 
+                    var dobEpochDays by remember { mutableStateOf<Int?>(null) }
+                    var wordsReloadToken by remember { mutableStateOf(0) }
+
                     // Update checking state
                     var updateInfo by remember { mutableStateOf<com.contentedest.baby.net.UpdateInfoResponse?>(null) }
                     var showUpdateDialog by remember { mutableStateOf(false) }
@@ -147,6 +152,8 @@ class MainActivity : ComponentActivity() {
 
                     // Schedule sync on app start
                     LaunchedEffect(Unit) {
+                        dobEpochDays = settingsRepository.getDobEpochDays()
+                        wordRepository.runMabSaysBackfillIfNeeded(this@MainActivity)
                         SyncWorker.schedulePeriodicSync(this@MainActivity, deviceId)
                         // Trigger immediate sync to pull existing data
                         SyncWorker.triggerImmediateSync(this@MainActivity, deviceId)
@@ -296,6 +303,7 @@ class MainActivity : ComponentActivity() {
                                         if (selectedTab == 2) {
                                             WordsStatsBar(
                                                 wordRepository = wordRepository,
+                                                reloadToken = wordsReloadToken,
                                                 modifier = Modifier.fillMaxWidth()
                                             )
                                         }
@@ -358,7 +366,9 @@ class MainActivity : ComponentActivity() {
                                     onForceSync = {
                                         SyncWorker.triggerImmediateSync(this@MainActivity, deviceId)
                                     },
-                                    updateChecker = updateChecker
+                                    updateChecker = updateChecker,
+                                    settingsRepository = settingsRepository,
+                                    onDobChanged = { days -> dobEpochDays = days }
                                 )
                             }
                         } else if (showEventListScreen != null) {
@@ -413,6 +423,7 @@ class MainActivity : ComponentActivity() {
                                     GrowthScreen(
                                         growthRepository = growthRepository,
                                         deviceId = deviceId,
+                                        dobEpochDays = dobEpochDays,
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .padding(innerPadding)
@@ -422,6 +433,8 @@ class MainActivity : ComponentActivity() {
                                     WordsScreen(
                                         wordRepository = wordRepository,
                                         deviceId = deviceId,
+                                        dobEpochDays = dobEpochDays,
+                                        onWordsChanged = { wordsReloadToken++ },
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .padding(innerPadding)

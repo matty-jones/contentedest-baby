@@ -96,7 +96,9 @@ data class WordDto(
     @Json(name = "created_ts") val createdTs: Long,
     @Json(name = "updated_ts") val updatedTs: Long,
     val version: Int,
-    val deleted: Boolean = false
+    val deleted: Boolean = false,
+    val understands: Boolean = false,
+    val says: Boolean = false
 )
 
 @JsonClass(generateAdapter = true)

@@ -86,6 +86,8 @@ class WordDTO(BaseModel):
     updated_ts: int
     version: int
     deleted: bool = False
+    understands: bool = False
+    says: bool = False
 
 
 class WordPushResponse(BaseModel):

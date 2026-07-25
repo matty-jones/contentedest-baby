@@ -6,17 +6,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.contentedest.baby.data.local.GrowthCategory
 import com.contentedest.baby.data.repo.GrowthRepository
+import com.contentedest.baby.ui.chart.rememberPercentileChartLines
 import com.patrykandpatrick.vico.compose.cartesian.*
 import com.patrykandpatrick.vico.compose.cartesian.axis.*
 import com.patrykandpatrick.vico.compose.cartesian.layer.*
 import com.patrykandpatrick.vico.compose.m3.*
 import com.patrykandpatrick.vico.compose.common.component.rememberTextComponent
-import com.patrykandpatrick.vico.core.common.Fill
 import androidx.compose.ui.unit.sp
 import com.patrykandpatrick.vico.core.cartesian.axis.HorizontalAxis
 import com.patrykandpatrick.vico.core.cartesian.axis.VerticalAxis
@@ -55,6 +54,7 @@ import androidx.compose.ui.unit.Density
 fun GrowthScreen(
     growthRepository: GrowthRepository,
     deviceId: String,
+    dobEpochDays: Int? = null,
     modifier: Modifier = Modifier
 ) {
     var selectedCategory by remember { mutableStateOf<GrowthCategory>(GrowthCategory.weight) }
@@ -141,6 +141,7 @@ fun GrowthScreen(
                     GrowthChart(
                         data = growthData,
                         category = selectedCategory,
+                        dobEpochDays = dobEpochDays,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -151,10 +152,11 @@ fun GrowthScreen(
                 val latest = growthData.last()
                 val previous = growthData.getOrNull(growthData.size - 2) // Next-most-recent value
                 val first = growthData.first()
-                
-                // Calculate age in months from first datapoint to latest
-                val ageMonths = calculateAgeMonths(first.ts, latest.ts)
-                
+                val ageAnchorTs = dobEpochSeconds(dobEpochDays) ?: first.ts
+
+                // Calculate age in months from DOB (or first datapoint fallback) to latest
+                val ageMonths = calculateAgeMonths(ageAnchorTs, latest.ts)
+
                 // Calculate percentile (only for weight and height)
                 val percentile = if (selectedCategory == GrowthCategory.weight || selectedCategory == GrowthCategory.height) {
                     GrowthPercentileCalculator.calculatePercentile(
@@ -236,6 +238,7 @@ fun GrowthScreen(
 fun GrowthChart(
     data: List<com.contentedest.baby.data.local.GrowthDataEntity>,
     category: GrowthCategory,
+    dobEpochDays: Int? = null,
     modifier: Modifier = Modifier
 ) {
     if (data.isEmpty()) {
@@ -257,11 +260,11 @@ fun GrowthChart(
         data.firstOrNull()?.unit ?: ""
     }
 
-    // Calculate age in months for each data point (relative to first data point)
-    val firstTs = data.first().ts
+    // Calculate age in months for each data point (relative to DOB, or first datapoint fallback)
+    val firstTs = dobEpochSeconds(dobEpochDays) ?: data.first().ts
     
     // Generate percentile data points (only for weight and height)
-    val percentileData = remember(data, category, unit) {
+    val percentileData = remember(data, category, unit, firstTs) {
         if (category != GrowthCategory.weight && category != GrowthCategory.height) {
             null
         } else {
@@ -308,37 +311,9 @@ fun GrowthChart(
             GrowthCategory.head -> Color(0xFFFF9800)
         }
     }
-    
-    // Create lighter variants of the main color for percentile lines (consistent color scheme)
-    // Lighten the color by reducing RGB values less aggressively and increasing alpha
-    val darkerColor1 = remember(lineColor) {
-        // For median: lighter and more visible
-        Color(
-            red = (lineColor.red * 0.90f).coerceIn(0f, 1f),
-            green = (lineColor.green * 0.90f).coerceIn(0f, 1f),
-            blue = (lineColor.blue * 0.90f).coerceIn(0f, 1f),
-            alpha = 0.75f
-        )
-    }
-    val darkerColor2 = remember(lineColor) {
-        // For 25th/75th: lighter and more visible
-        Color(
-            red = (lineColor.red * 0.85f).coerceIn(0f, 1f),
-            green = (lineColor.green * 0.85f).coerceIn(0f, 1f),
-            blue = (lineColor.blue * 0.85f).coerceIn(0f, 1f),
-            alpha = 0.65f
-        )
-    }
-    val darkerColor3 = remember(lineColor) {
-        // For 5th/95th: lighter and more visible
-        Color(
-            red = (lineColor.red * 0.80f).coerceIn(0f, 1f),
-            green = (lineColor.green * 0.80f).coerceIn(0f, 1f),
-            blue = (lineColor.blue * 0.80f).coerceIn(0f, 1f),
-            alpha = 0.55f
-        )
-    }
-    
+
+    val percentileLines = rememberPercentileChartLines(lineColor)
+
     val density = LocalDensity.current
 
     // Create axes using Vico 2.1.4 API companion object functions with white axis labels
@@ -376,44 +351,9 @@ fun GrowthChart(
         itemPlacer = remember { HorizontalAxis.ItemPlacer.aligned(spacing = { 2 }) }
     )
 
-    // Create line styles with different colors, thicknesses, and styles
-    // Main line: thick, bright color
-    val mainLine = LineCartesianLayer.rememberLine(
-        fill = LineCartesianLayer.LineFill.single(Fill(lineColor.toArgb())),
-        stroke = LineCartesianLayer.LineStroke.Continuous(
-            thicknessDp = 3f
-        )
-    )
-    
-    // Median (50th): thinner, dotted, darker color
-    val medianLine = LineCartesianLayer.rememberLine(
-        fill = LineCartesianLayer.LineFill.single(Fill(darkerColor1.toArgb())),
-        stroke = LineCartesianLayer.LineStroke.Dashed(
-            thicknessDp = 2f,
-            dashLengthDp = 8f,
-            gapLengthDp = 4f
-        )
-    )
-    
-    // 25th/75th: thinner, solid, even darker
-    val quartileLine = LineCartesianLayer.rememberLine(
-        fill = LineCartesianLayer.LineFill.single(Fill(darkerColor2.toArgb())),
-        stroke = LineCartesianLayer.LineStroke.Continuous(
-            thicknessDp = 1.5f
-        )
-    )
-    
-    // 5th/95th: thinnest, solid, darkest
-    val extremeLine = LineCartesianLayer.rememberLine(
-        fill = LineCartesianLayer.LineFill.single(Fill(darkerColor3.toArgb())),
-        stroke = LineCartesianLayer.LineStroke.Continuous(
-            thicknessDp = 1f
-        )
-    )
-
     // Create main data line layer with custom Y-axis range (no forced zero) - Vico 2.1.4 API
     val mainLineLayer = rememberLineCartesianLayer(
-        lineProvider = LineCartesianLayer.LineProvider.series(listOf(mainLine)),
+        lineProvider = LineCartesianLayer.LineProvider.series(listOf(percentileLines.main)),
         rangeProvider = CartesianLayerRangeProvider.fixed(
             minY = yAxisMin,
             maxY = yAxisMax
@@ -423,35 +363,35 @@ fun GrowthChart(
     // Create percentile line layers (only for weight and height)
     // Percentiles: 5th, 25th, 50th, 75th, 95th
     val percentile50Layer = rememberLineCartesianLayer(
-        lineProvider = LineCartesianLayer.LineProvider.series(listOf(medianLine)),
+        lineProvider = LineCartesianLayer.LineProvider.series(listOf(percentileLines.median)),
         rangeProvider = CartesianLayerRangeProvider.fixed(
             minY = yAxisMin,
             maxY = yAxisMax
         )
     )
     val percentile25Layer = rememberLineCartesianLayer(
-        lineProvider = LineCartesianLayer.LineProvider.series(listOf(quartileLine)),
+        lineProvider = LineCartesianLayer.LineProvider.series(listOf(percentileLines.quartile)),
         rangeProvider = CartesianLayerRangeProvider.fixed(
             minY = yAxisMin,
             maxY = yAxisMax
         )
     )
     val percentile75Layer = rememberLineCartesianLayer(
-        lineProvider = LineCartesianLayer.LineProvider.series(listOf(quartileLine)),
+        lineProvider = LineCartesianLayer.LineProvider.series(listOf(percentileLines.quartile)),
         rangeProvider = CartesianLayerRangeProvider.fixed(
             minY = yAxisMin,
             maxY = yAxisMax
         )
     )
     val percentile5Layer = rememberLineCartesianLayer(
-        lineProvider = LineCartesianLayer.LineProvider.series(listOf(extremeLine)),
+        lineProvider = LineCartesianLayer.LineProvider.series(listOf(percentileLines.extreme)),
         rangeProvider = CartesianLayerRangeProvider.fixed(
             minY = yAxisMin,
             maxY = yAxisMax
         )
     )
     val percentile95Layer = rememberLineCartesianLayer(
-        lineProvider = LineCartesianLayer.LineProvider.series(listOf(extremeLine)),
+        lineProvider = LineCartesianLayer.LineProvider.series(listOf(percentileLines.extreme)),
         rangeProvider = CartesianLayerRangeProvider.fixed(
             minY = yAxisMin,
             maxY = yAxisMax
@@ -896,6 +836,16 @@ fun formatDateVeryShort(ts: Long): String {
     val date = instant.atZone(ZoneId.systemDefault()).toLocalDate()
     // Use just day number for compact display
     return date.dayOfMonth.toString()
+}
+
+/**
+ * Convert settings DOB (epoch days) to epoch seconds at local start of day, or null if unset.
+ */
+fun dobEpochSeconds(dobEpochDays: Int?, zone: ZoneId = ZoneId.systemDefault()): Long? {
+    if (dobEpochDays == null) return null
+    return LocalDate.ofEpochDay(dobEpochDays.toLong())
+        .atStartOfDay(zone)
+        .toEpochSecond()
 }
 
 /**

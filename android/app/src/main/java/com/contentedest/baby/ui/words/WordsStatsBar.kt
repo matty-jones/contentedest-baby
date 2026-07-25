@@ -24,24 +24,46 @@ import kotlinx.coroutines.launch
 @Composable
 fun WordsStatsBar(
     wordRepository: WordRepository,
+    reloadToken: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
     var total by remember { mutableStateOf(0) }
+    var understood by remember { mutableStateOf(0) }
+    var said by remember { mutableStateOf(0) }
 
-    LaunchedEffect(Unit) {
+    fun refresh() {
         scope.launch {
-            total = wordRepository.getAllOrderedByFirstUseDesc().size
+            val words = wordRepository.getAllOrderedByFirstUseDesc()
+            total = words.size
+            val matchedUnderstood = mutableSetOf<String>()
+            val matchedSaid = mutableSetOf<String>()
+            for (word in words) {
+                val mab = WordFuzzyMatcher.matchedMabWord(word.word) ?: continue
+                val key = WordFuzzyMatcher.normalize(mab)
+                if (word.understands) matchedUnderstood.add(key)
+                if (word.says) matchedSaid.add(key)
+            }
+            understood = matchedUnderstood.size
+            said = matchedSaid.size
         }
+    }
+
+    LaunchedEffect(reloadToken) {
+        refresh()
     }
 
     LaunchedEffect(Unit) {
         while (true) {
             kotlinx.coroutines.delay(30000)
-            scope.launch {
-                total = wordRepository.getAllOrderedByFirstUseDesc().size
-            }
+            refresh()
         }
+    }
+
+    val totalLabel = MacArthurBatesChecklist.TOTAL
+    val text = when {
+        total <= 0 -> "No words yet"
+        else -> "$total words · MA-B: $understood/$totalLabel Understood, $said/$totalLabel Said"
     }
 
     Row(
@@ -53,7 +75,7 @@ fun WordsStatsBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = if (total > 0) "$total words" else "No words yet",
+            text = text,
             fontSize = 10.sp,
             color = MaterialTheme.colorScheme.onSurface
         )

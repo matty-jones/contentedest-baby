@@ -7,6 +7,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -17,24 +18,37 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.contentedest.baby.BuildConfig
+import com.contentedest.baby.data.repo.SettingsRepository
+import com.contentedest.baby.ui.growth.GrowthDatePickerDialog
 import com.contentedest.baby.update.UpdateChecker
 import com.contentedest.baby.update.UpdateResult
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
     onForceSync: (() -> Unit)? = null,
-    updateChecker: UpdateChecker? = null
+    updateChecker: UpdateChecker? = null,
+    settingsRepository: SettingsRepository? = null,
+    onDobChanged: ((Int?) -> Unit)? = null
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
-    
-    // State for update process
+
     var isCheckingUpdate by remember { mutableStateOf(false) }
     var isDownloadingUpdate by remember { mutableStateOf(false) }
+    var dobEpochDays by remember { mutableStateOf<Int?>(null) }
+    var showDobPicker by remember { mutableStateOf(false) }
+
+    LaunchedEffect(settingsRepository) {
+        if (settingsRepository != null) {
+            dobEpochDays = settingsRepository.getDobEpochDays()
+        }
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -51,13 +65,50 @@ fun SettingsScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.padding(padding)) {
+            if (settingsRepository != null) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Baby",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Date of birth",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { showDobPicker = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            val label = dobEpochDays?.let {
+                                LocalDate.ofEpochDay(it.toLong())
+                                    .format(DateTimeFormatter.ofPattern("MMM d, yyyy"))
+                            } ?: "Not set"
+                            Text(label)
+                        }
+                        Text(
+                            text = "Used for growth and vocabulary age percentiles.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                }
+            }
+
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    // App version info
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -74,17 +125,15 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
-                    
+
                     Spacer(modifier = Modifier.height(16.dp))
-                    
-                    // Force Event Sync button
+
                     if (onForceSync != null) {
                         Button(
                             onClick = {
                                 scope.launch {
                                     snackbarHostState.showSnackbar("Starting sync...")
                                     onForceSync()
-                                    // Show completion message after a short delay
                                     kotlinx.coroutines.delay(500)
                                     snackbarHostState.showSnackbar("Sync completed", duration = SnackbarDuration.Short)
                                 }
@@ -100,8 +149,7 @@ fun SettingsScreen(
                             Text("Force Event Sync")
                         }
                     }
-                    
-                    // Check for App Updates button
+
                     if (updateChecker != null) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Button(
@@ -111,15 +159,14 @@ fun SettingsScreen(
                                     try {
                                         val updateInfo = updateChecker.checkForUpdate()
                                         isCheckingUpdate = false
-                                        
+
                                         if (updateInfo != null) {
-                                            // Update available - download and install
                                             isDownloadingUpdate = true
                                             snackbarHostState.showSnackbar("Downloading update...")
-                                            
+
                                             val result = updateChecker.performUpdate(context)
                                             isDownloadingUpdate = false
-                                            
+
                                             when (result) {
                                                 is UpdateResult.InstallStarted -> {
                                                     snackbarHostState.showSnackbar(
@@ -187,7 +234,20 @@ fun SettingsScreen(
             }
         }
     }
+
+    if (showDobPicker && settingsRepository != null) {
+        GrowthDatePickerDialog(
+            onDateSelected = { date ->
+                showDobPicker = false
+                scope.launch {
+                    val days = date.toEpochDay().toInt()
+                    settingsRepository.setDobEpochDays(days)
+                    dobEpochDays = days
+                    onDobChanged?.invoke(days)
+                    snackbarHostState.showSnackbar("Date of birth saved")
+                }
+            },
+            onDismiss = { showDobPicker = false }
+        )
+    }
 }
-
-
-
