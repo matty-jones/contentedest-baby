@@ -4,6 +4,7 @@ android/.gradle/
 android/.cxx/
 android/build/
 android/app/build/
+android/.kotlin/errors/
 server/.venv/
 server/apks
 # Ignore only top-level data dir (not Android package com.contentedest.baby.data)
