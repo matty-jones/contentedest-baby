@@ -19,11 +19,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.contentedest.baby.data.repo.WordRepository
+import com.contentedest.baby.ui.growth.calculateAgeMonths
+import com.contentedest.baby.ui.growth.dobEpochSeconds
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 @Composable
 fun WordsStatsBar(
     wordRepository: WordRepository,
+    dobEpochDays: Int? = null,
     reloadToken: Int = 0,
     modifier: Modifier = Modifier
 ) {
@@ -31,6 +35,7 @@ fun WordsStatsBar(
     var total by remember { mutableStateOf(0) }
     var understood by remember { mutableStateOf(0) }
     var said by remember { mutableStateOf(0) }
+    var percentile by remember { mutableStateOf<Double?>(null) }
 
     fun refresh() {
         scope.launch {
@@ -46,10 +51,18 @@ fun WordsStatsBar(
             }
             understood = matchedUnderstood.size
             said = matchedSaid.size
+
+            val dobTs = dobEpochSeconds(dobEpochDays)
+            percentile = if (dobTs != null && total > 0) {
+                val ageMonths = calculateAgeMonths(dobTs, System.currentTimeMillis() / 1000)
+                VocabularyPercentileCalculator.percentileForCount(total.toDouble(), ageMonths)
+            } else {
+                null
+            }
         }
     }
 
-    LaunchedEffect(reloadToken) {
+    LaunchedEffect(reloadToken, dobEpochDays) {
         refresh()
     }
 
@@ -63,7 +76,12 @@ fun WordsStatsBar(
     val totalLabel = MacArthurBatesChecklist.TOTAL
     val text = when {
         total <= 0 -> "No words yet"
-        else -> "$total words · MA-B: $understood/$totalLabel Understood, $said/$totalLabel Said"
+        else -> {
+            val pctPart = percentile?.let {
+                String.format(Locale.US, " (%.1fth %%ile)", it)
+            }.orEmpty()
+            "$total words$pctPart · MA-B: $understood/$totalLabel Understood, $said/$totalLabel Said"
+        }
     }
 
     Row(

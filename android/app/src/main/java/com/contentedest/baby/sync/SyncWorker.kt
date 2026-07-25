@@ -5,6 +5,7 @@ import androidx.work.*
 import androidx.work.ListenableWorker.Result as WorkerResult
 import com.contentedest.baby.data.repo.EventRepository
 import com.contentedest.baby.data.repo.GrowthRepository
+import com.contentedest.baby.data.repo.SettingsRepository
 import com.contentedest.baby.data.repo.SyncRepository
 import com.contentedest.baby.data.repo.WordRepository
 import com.contentedest.baby.net.EventDto
@@ -27,12 +28,14 @@ class SyncWorker(
         fun eventRepository(): EventRepository
         fun growthRepository(): GrowthRepository
         fun wordRepository(): WordRepository
+        fun settingsRepository(): SettingsRepository
         fun syncRepository(): SyncRepository
     }
 
     private val eventRepository: EventRepository
     private val growthRepository: GrowthRepository
     private val wordRepository: WordRepository
+    private val settingsRepository: SettingsRepository
     private val syncRepository: SyncRepository
 
     init {
@@ -43,6 +46,7 @@ class SyncWorker(
         eventRepository = entryPoint.eventRepository()
         growthRepository = entryPoint.growthRepository()
         wordRepository = entryPoint.wordRepository()
+        settingsRepository = entryPoint.settingsRepository()
         syncRepository = entryPoint.syncRepository()
     }
 
@@ -64,6 +68,8 @@ class SyncWorker(
             // Sync growth data
             val growthPullResult = growthRepository.syncPull(since = 0)
             val wordPullResult = wordRepository.syncPull(since = 0)
+            val profilePullResult = settingsRepository.syncPull()
+            val profilePushResult = settingsRepository.syncPushLocalIfNeeded(deviceId)
 
             return@coroutineScope when (pullResult) {
                 is com.contentedest.baby.data.repo.Result.Success -> {
@@ -104,6 +110,24 @@ class SyncWorker(
                         is com.contentedest.baby.data.repo.Result.Failure -> {
                             android.util.Log.e("SyncWorker", "Word sync failed", wordPullResult.exception)
                         }
+                    }
+
+                    when (profilePullResult) {
+                        is com.contentedest.baby.data.repo.Result.Success -> {
+                            android.util.Log.d(
+                                "SyncWorker",
+                                "Synced baby profile dob=${profilePullResult.data.dobEpochDays}"
+                            )
+                        }
+                        is com.contentedest.baby.data.repo.Result.Failure -> {
+                            android.util.Log.e("SyncWorker", "Baby profile pull failed", profilePullResult.exception)
+                        }
+                    }
+                    when (profilePushResult) {
+                        is com.contentedest.baby.data.repo.Result.Failure -> {
+                            android.util.Log.e("SyncWorker", "Baby profile push failed", profilePushResult.exception)
+                        }
+                        else -> Unit
                     }
                     
                     WorkerResult.success()

@@ -267,6 +267,57 @@ async def test_words_conflict_resolution_and_pull_filters():
         assert changed[0]["version"] == newer["version"]
 
 
+async def test_baby_profile_dob_sync_last_write_wins():
+    async with AsyncClient(transport=_TEST_TRANSPORT, base_url="http://test") as ac:
+        now = int(time.time())
+        device_a = f"profile-a-{uuid.uuid4()}"
+        device_b = f"profile-b-{uuid.uuid4()}"
+
+        r0 = await ac.get("/baby-profile")
+        assert r0.status_code == 200
+        assert r0.json()["data"]["dob_epoch_days"] is None or isinstance(
+            r0.json()["data"]["dob_epoch_days"], int
+        )
+
+        first = {
+            "dob_epoch_days": 19000,
+            "updated_ts": now - 10,
+            "version": 1,
+            "device_id": device_a,
+        }
+        r1 = await ac.post("/baby-profile", json=first)
+        assert r1.status_code == 200
+        assert r1.json()["data"]["dob_epoch_days"] == 19000
+        assert r1.json()["data"]["version"] == 1
+
+        stale = {
+            "dob_epoch_days": 18000,
+            "updated_ts": now - 5,
+            "version": 0,
+            "device_id": device_b,
+        }
+        r2 = await ac.post("/baby-profile", json=stale)
+        assert r2.status_code == 200
+        assert r2.json()["data"]["dob_epoch_days"] == 19000
+        assert r2.json()["data"]["version"] == 1
+
+        newer = {
+            "dob_epoch_days": 19100,
+            "updated_ts": now,
+            "version": 2,
+            "device_id": device_b,
+        }
+        r3 = await ac.post("/baby-profile", json=newer)
+        assert r3.status_code == 200
+        assert r3.json()["data"]["dob_epoch_days"] == 19100
+        assert r3.json()["data"]["version"] == 2
+
+        r4 = await ac.get("/baby-profile")
+        assert r4.status_code == 200
+        assert r4.json()["data"]["dob_epoch_days"] == 19100
+        assert r4.json()["data"]["device_id"] == device_b
+
+
 async def test_webhook_occupied_creates_then_idempotent():
     device_id = f"webhook-test-{uuid.uuid4()}"
     async with AsyncClient(transport=_TEST_TRANSPORT, base_url="http://test") as ac:

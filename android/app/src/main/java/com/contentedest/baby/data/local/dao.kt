@@ -62,6 +62,9 @@ interface SettingsDao {
 
     @Query("SELECT * FROM settings WHERE id = 1")
     suspend fun get(): SettingsEntity?
+
+    @Query("SELECT * FROM settings WHERE id = 1")
+    fun observe(): kotlinx.coroutines.flow.Flow<SettingsEntity?>
 }
 
 @Dao

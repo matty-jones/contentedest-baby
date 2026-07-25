@@ -91,8 +91,22 @@ object AppModule {
             }
         }
 
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `settings` ADD COLUMN `dob_updated_ts` INTEGER NOT NULL DEFAULT 0"
+                )
+                db.execSQL(
+                    "ALTER TABLE `settings` ADD COLUMN `dob_version` INTEGER NOT NULL DEFAULT 0"
+                )
+                db.execSQL(
+                    "ALTER TABLE `settings` ADD COLUMN `dob_device_id` TEXT"
+                )
+            }
+        }
+
         return Room.databaseBuilder(context, AppDatabase::class.java, "tcb.db")
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .build()
     }
 
@@ -112,8 +126,8 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideSettingsRepository(db: AppDatabase): SettingsRepository =
-        SettingsRepository(db.settingsDao())
+    fun provideSettingsRepository(db: AppDatabase, api: com.contentedest.baby.net.ApiService): SettingsRepository =
+        SettingsRepository(db.settingsDao(), api)
 
     @Provides
     @Singleton

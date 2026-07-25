@@ -82,7 +82,11 @@ data class SettingsEntity(
     val infant_name: String? = null,
     val dob_epoch_days: Int? = null,
     val trusted_ssids_csv: String? = null,
-    val server_host: String? = null
+    val server_host: String? = null,
+    /** Sync metadata for DOB (last-write-wins with server baby_profile). */
+    val dob_updated_ts: Long = 0,
+    val dob_version: Int = 0,
+    val dob_device_id: String? = null
 )
 
 @Entity(

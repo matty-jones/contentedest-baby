@@ -101,6 +101,18 @@ class WordPullResponse(BaseModel):
     data: List[WordDTO]
 
 
+class BabyProfileDTO(BaseModel):
+    dob_epoch_days: int | None = None
+    updated_ts: int = 0
+    version: int = 0
+    device_id: str = ""
+
+
+class BabyProfileResponse(BaseModel):
+    server_clock: int
+    data: BabyProfileDTO
+
+
 class CribWebhookPayload(BaseModel):
     state: Literal["occupied", "empty"]
     device_id: Optional[str] = None

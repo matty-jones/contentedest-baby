@@ -36,4 +36,10 @@ interface ApiService {
 
     @GET("/words")
     suspend fun pullWords(@Query("since") since: Long = 0): WordPullResponse
+
+    @GET("/baby-profile")
+    suspend fun pullBabyProfile(): BabyProfileResponse
+
+    @POST("/baby-profile")
+    suspend fun pushBabyProfile(@Body data: BabyProfileDto): BabyProfileResponse
 }

@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from .database import Base, SessionLocal, engine
 from .migrate_schema import migrate_schema
 from .routers import (
+    baby_profile_router,
     growth_router,
     health_admin_router,
     sync_router,
@@ -52,3 +53,4 @@ app.include_router(sync_router)
 app.include_router(updates_router)
 app.include_router(growth_router)
 app.include_router(words_router)
+app.include_router(baby_profile_router)

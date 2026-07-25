@@ -67,4 +67,55 @@ object VocabularyPercentileCalculator {
         val logUpper = ln1p(getter(upper).toDouble())
         return expm1(logLower + t * (logUpper - logLower))
     }
+
+    /**
+     * Map an observed word count to a percentile at [ageMonths] by linear interpolation
+     * between the 5/25/50/75/95 reference counts (themselves age-interpolated in log1p space).
+     * Returns null outside the valid age window.
+     */
+    fun percentileForCount(wordCount: Double, ageMonths: Double): Double? {
+        if (ageMonths < MIN_AGE_MONTHS || ageMonths > MAX_AGE_MONTHS) return null
+        if (wordCount < 0) return null
+
+        val bands = listOf(5, 25, 50, 75, 95).map { pct ->
+            val y = valueAtAge(pct, ageMonths) ?: return null
+            pct.toDouble() to y
+        }
+
+        // Exact hits
+        bands.firstOrNull { kotlin.math.abs(it.second - wordCount) < 1e-9 }?.let { return it.first }
+
+        // Below lowest / above highest: linear extrapolation from nearest segment
+        if (wordCount <= bands.first().second) {
+            val (p0, y0) = bands[0]
+            val (p1, y1) = bands[1]
+            return interpolatePercentile(wordCount, y0, y1, p0, p1)
+        }
+        if (wordCount >= bands.last().second) {
+            val (p0, y0) = bands[bands.lastIndex - 1]
+            val (p1, y1) = bands.last()
+            return interpolatePercentile(wordCount, y0, y1, p0, p1)
+        }
+
+        for (i in 0 until bands.lastIndex) {
+            val (p0, y0) = bands[i]
+            val (p1, y1) = bands[i + 1]
+            if (wordCount in y0..y1 || wordCount in y1..y0) {
+                return interpolatePercentile(wordCount, y0, y1, p0, p1)
+            }
+        }
+        return null
+    }
+
+    private fun interpolatePercentile(
+        count: Double,
+        y0: Double,
+        y1: Double,
+        p0: Double,
+        p1: Double
+    ): Double {
+        if (kotlin.math.abs(y1 - y0) < 1e-9) return p0
+        val t = (count - y0) / (y1 - y0)
+        return p0 + t * (p1 - p0)
+    }
 }

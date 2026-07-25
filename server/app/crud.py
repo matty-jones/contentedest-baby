@@ -4,7 +4,7 @@ import uuid
 from typing import Iterable, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import select
-from .models import BabyWord, Device, Event, ServerClock, GrowthData
+from .models import BabyProfile, BabyWord, Device, Event, ServerClock, GrowthData
 from .event_policy import (
     ADJACENT_MERGE_GAP_SECONDS,
     MIN_CRIB_WEBHOOK_SLEEP_SECONDS,
@@ -207,6 +207,51 @@ def upsert_baby_word(session: Session, incoming: BabyWord) -> Tuple[BabyWord, in
 def select_baby_words_since(session: Session, since_clock: int) -> list[BabyWord]:
     stmt = select(BabyWord).where(BabyWord.server_clock > since_clock)
     return list(session.scalars(stmt).all())
+
+
+_BABY_PROFILE_FIELDS = (
+    "dob_epoch_days",
+    "updated_ts",
+    "version",
+    "device_id",
+)
+
+
+def get_baby_profile(session: Session) -> BabyProfile:
+    profile = session.get(BabyProfile, 1)
+    if profile is None:
+        profile = BabyProfile(
+            id=1,
+            dob_epoch_days=None,
+            updated_ts=0,
+            version=0,
+            device_id="",
+            server_clock=0,
+        )
+        session.add(profile)
+        session.commit()
+        session.refresh(profile)
+    return profile
+
+
+def upsert_baby_profile(session: Session, incoming: BabyProfile) -> Tuple[BabyProfile, int]:
+    existing = get_baby_profile(session)
+    existing_key = (existing.version, existing.updated_ts, existing.device_id)
+    incoming_key = (incoming.version, incoming.updated_ts, incoming.device_id)
+    changed = False
+    if existing.version == 0 and existing.updated_ts == 0 and incoming.version > 0:
+        _copy_fields(existing, incoming, _BABY_PROFILE_FIELDS)
+        changed = True
+    elif _incoming_wins(existing_key, incoming_key):
+        _copy_fields(existing, incoming, _BABY_PROFILE_FIELDS)
+        changed = True
+    if changed:
+        clock = next_clock(session)
+        existing.server_clock = clock
+        session.add(existing)
+        session.commit()
+        session.refresh(existing)
+    return existing, get_clock(session)
 
 
 def get_open_sleep(session: Session, device_id: str) -> Event | None:

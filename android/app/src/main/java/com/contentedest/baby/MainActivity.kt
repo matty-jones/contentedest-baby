@@ -143,6 +143,12 @@ class MainActivity : ComponentActivity() {
                     var dobEpochDays by remember { mutableStateOf<Int?>(null) }
                     var wordsReloadToken by remember { mutableStateOf(0) }
 
+                    LaunchedEffect(Unit) {
+                        settingsRepository.observeDobEpochDays().collect { days ->
+                            dobEpochDays = days
+                        }
+                    }
+
                     // Update checking state
                     var updateInfo by remember { mutableStateOf<com.contentedest.baby.net.UpdateInfoResponse?>(null) }
                     var showUpdateDialog by remember { mutableStateOf(false) }
@@ -152,10 +158,9 @@ class MainActivity : ComponentActivity() {
 
                     // Schedule sync on app start
                     LaunchedEffect(Unit) {
-                        dobEpochDays = settingsRepository.getDobEpochDays()
                         wordRepository.runMabSaysBackfillIfNeeded(this@MainActivity)
                         SyncWorker.schedulePeriodicSync(this@MainActivity, deviceId)
-                        // Trigger immediate sync to pull existing data
+                        // Trigger immediate sync to pull existing data (includes baby profile DOB)
                         SyncWorker.triggerImmediateSync(this@MainActivity, deviceId)
                         
                         // Check for updates
@@ -368,6 +373,7 @@ class MainActivity : ComponentActivity() {
                                     },
                                     updateChecker = updateChecker,
                                     settingsRepository = settingsRepository,
+                                    deviceId = deviceId,
                                     onDobChanged = { days -> dobEpochDays = days }
                                 )
                             }

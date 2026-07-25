@@ -33,6 +33,7 @@ fun SettingsScreen(
     onForceSync: (() -> Unit)? = null,
     updateChecker: UpdateChecker? = null,
     settingsRepository: SettingsRepository? = null,
+    deviceId: String = "",
     onDobChanged: ((Int?) -> Unit)? = null
 ) {
     val scope = rememberCoroutineScope()
@@ -94,7 +95,7 @@ fun SettingsScreen(
                             Text(label)
                         }
                         Text(
-                            text = "Used for growth and vocabulary age percentiles.",
+                            text = "Used for growth and vocabulary age percentiles. Synced to all paired devices.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 8.dp)
@@ -241,10 +242,22 @@ fun SettingsScreen(
                 showDobPicker = false
                 scope.launch {
                     val days = date.toEpochDay().toInt()
-                    settingsRepository.setDobEpochDays(days)
-                    dobEpochDays = days
-                    onDobChanged?.invoke(days)
-                    snackbarHostState.showSnackbar("Date of birth saved")
+                    when (val result = settingsRepository.setDobEpochDays(days, deviceId)) {
+                        is com.contentedest.baby.data.repo.Result.Success -> {
+                            dobEpochDays = days
+                            onDobChanged?.invoke(days)
+                            snackbarHostState.showSnackbar("Date of birth saved")
+                        }
+                        is com.contentedest.baby.data.repo.Result.Failure -> {
+                            // Local write already happened inside setDob; surface sync issue.
+                            dobEpochDays = days
+                            onDobChanged?.invoke(days)
+                            snackbarHostState.showSnackbar(
+                                "Saved on this device; sync failed: ${result.exception.message}",
+                                duration = SnackbarDuration.Long
+                            )
+                        }
+                    }
                 }
             },
             onDismiss = { showDobPicker = false }

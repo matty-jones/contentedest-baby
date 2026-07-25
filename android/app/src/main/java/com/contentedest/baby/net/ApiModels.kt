@@ -113,3 +113,17 @@ data class WordPullResponse(
     @Json(name = "server_clock") val serverClock: Long,
     val data: List<WordDto>
 )
+
+@JsonClass(generateAdapter = true)
+data class BabyProfileDto(
+    @Json(name = "dob_epoch_days") val dobEpochDays: Int? = null,
+    @Json(name = "updated_ts") val updatedTs: Long = 0,
+    val version: Int = 0,
+    @Json(name = "device_id") val deviceId: String = ""
+)
+
+@JsonClass(generateAdapter = true)
+data class BabyProfileResponse(
+    @Json(name = "server_clock") val serverClock: Long,
+    val data: BabyProfileDto
+)

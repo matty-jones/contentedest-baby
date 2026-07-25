@@ -5,7 +5,7 @@
 Implemented fuzzy search, DOB-based vocabulary percentile curves, Growth DOB anchoring, and MacArthur-Bates Short Form Level I (MA-B) Understood/Said metadata.
 
 ### Done
-- **DOB setting**: Settings screen date picker writes `settings.dob_epoch_days` via `SettingsRepository`.
+- **DOB setting**: Settings screen date picker writes `settings.dob_epoch_days` via `SettingsRepository`, and **pushes/pulls a singleton server `baby_profile`** (`GET/POST /baby-profile`) so all devices share one DOB. SyncWorker pulls profile each sync; MainActivity observes Room Flow for live updates.
 - **Growth age**: Weight/height percentiles and stats age from DOB when set; fall back to first measurement if unset (`dobEpochSeconds` + `calculateAgeMonths`).
 - **Fuzzy search**: Local Levenshtein ratio matcher in `WordFuzzyMatcher` (FuzzyKot was incompatible with Room/kapt Kotlin 2.0.21 metadata). Search button beside Add Word; scroll + brief highlight on hit.
 - **Vocab percentiles**: `VocabularyPercentileCalculator` (16–30 mo, log1p interp, hard null outside range). `PercentileLineStyles` shared with Growth fade/stroke recipe. Overlay on Words graph when DOB is set.
@@ -16,6 +16,6 @@ Implemented fuzzy search, DOB-based vocabulary percentile curves, Growth DOB anc
 - Server: `models.BabyWord`, `schemas.WordDTO`, `routers/words.py`, `migrate_schema.py`, `crud._WORD_UPSERT_FIELDS`
 
 ### Notes for next agents
-- Set DOB in Settings before vocab percentile lines appear.
+- Set DOB in Settings before vocab percentile lines appear; DOB syncs via `/baby-profile` to all devices.
 - Said always stores `understands=true` and `says=true`.
 - Vocab norms are male / American English, informational only (Mayor & Plunkett–style table).

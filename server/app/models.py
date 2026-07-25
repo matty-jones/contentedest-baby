@@ -80,3 +80,17 @@ class BabyWord(Base):
     server_clock: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
+class BabyProfile(Base):
+    """Singleton household baby profile (one baby). Primary key is always 1."""
+
+    __tablename__ = "baby_profile"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    dob_epoch_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    updated_ts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    device_id: Mapped[str] = mapped_column(String, nullable=False, default="")
+    server_clock: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+
