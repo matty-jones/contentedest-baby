@@ -40,6 +40,7 @@ private const val TAG = "NurseryScreen"
 
 private const val HEALTH_CHECK_INTERVAL_MS = 2_000L
 private const val STALE_THRESHOLD_MS = 8_000L
+private const val FIRST_FRAME_TIMEOUT_MS = 10_000L
 private const val RECOVERY_COOLDOWN_MS = 15_000L
 private const val HARD_ESCALATION_FAILURES = 2
 
@@ -60,13 +61,45 @@ private class StreamHealthState {
     var lastRecoveryAttemptMs: Long = 0L
     var recoveryAttemptCount: Int = 0
     var consecutiveHealthFailures: Int = 0
+    var loadStartedAtMs: Long = System.currentTimeMillis()
+    var pendingRecoveryLevel: RecoveryLevel? = null
+    var pendingRecoveryReason: String? = null
+    var pendingRecoveryStartedAtMs: Long = 0L
 
     fun resetTracking() {
         hasRenderedFirstFrame = false
         lastRenderedFrameAtMs = 0L
         lastPosition = 0L
         lastPositionAdvanceMs = System.currentTimeMillis()
+        loadStartedAtMs = System.currentTimeMillis()
     }
+
+    fun markRecoveryAttempt(level: RecoveryLevel, reason: String, startedAtMs: Long) {
+        pendingRecoveryLevel = level
+        pendingRecoveryReason = reason
+        pendingRecoveryStartedAtMs = startedAtMs
+    }
+
+    fun clearPendingRecovery() {
+        pendingRecoveryLevel = null
+        pendingRecoveryReason = null
+    }
+}
+
+private fun onFrameRendered(streamHealth: StreamHealthState) {
+    val now = System.currentTimeMillis()
+    streamHealth.lastRenderedFrameAtMs = now
+    streamHealth.hasRenderedFirstFrame = true
+    streamHealth.consecutiveHealthFailures = 0
+
+    val pendingLevel = streamHealth.pendingRecoveryLevel ?: return
+    val reason = streamHealth.pendingRecoveryReason
+    val afterMs = now - streamHealth.pendingRecoveryStartedAtMs
+    streamHealth.clearPendingRecovery()
+    Log.i(
+        TAG,
+        "RECOVER_OK level=${pendingLevel.name.lowercase()} reason=$reason afterMs=$afterMs",
+    )
 }
 
 private fun createLoadControl(): DefaultLoadControl {
@@ -93,16 +126,12 @@ private fun createNurseryPlayer(
             repeatMode = Player.REPEAT_MODE_ONE
 
             setVideoFrameMetadataListener { _, _, _, _ ->
-                streamHealth.lastRenderedFrameAtMs = System.currentTimeMillis()
-                streamHealth.hasRenderedFirstFrame = true
-                streamHealth.consecutiveHealthFailures = 0
+                onFrameRendered(streamHealth)
             }
 
             addListener(object : Player.Listener {
                 override fun onRenderedFirstFrame() {
-                    streamHealth.lastRenderedFrameAtMs = System.currentTimeMillis()
-                    streamHealth.hasRenderedFirstFrame = true
-                    streamHealth.consecutiveHealthFailures = 0
+                    onFrameRendered(streamHealth)
                     Log.d(TAG, "First frame rendered")
                 }
 
@@ -127,7 +156,8 @@ private fun createNurseryPlayer(
         }
 }
 
-private fun loadStream(player: ExoPlayer, streamUrl: String) {
+private fun loadStream(player: ExoPlayer, streamUrl: String, streamHealth: StreamHealthState) {
+    streamHealth.loadStartedAtMs = System.currentTimeMillis()
     Log.d(TAG, "Loading RTSP stream: $streamUrl")
     try {
         player.stop()
@@ -163,7 +193,11 @@ private fun evaluateStreamHealth(player: ExoPlayer, streamHealth: StreamHealthSt
     }
 
     if (!streamHealth.hasRenderedFirstFrame) {
-        return null
+        return if (now - streamHealth.loadStartedAtMs >= FIRST_FRAME_TIMEOUT_MS) {
+            "first_frame_timeout"
+        } else {
+            null
+        }
     }
 
     val playbackState = player.playbackState
@@ -249,13 +283,14 @@ fun NurseryScreen(streamUrl: String, modifier: Modifier = Modifier) {
 
         streamHealth.resetTracking()
         val recoveryStartedAt = System.currentTimeMillis()
+        streamHealth.markRecoveryAttempt(level, reason, recoveryStartedAt)
 
         when (level) {
             RecoveryLevel.SOFT -> {
-                loadStream(player, streamUrlState.value)
+                loadStream(player, streamUrlState.value, streamHealth)
                 Log.i(
                     TAG,
-                    "RECOVER_OK level=soft reason=$reason afterMs=${System.currentTimeMillis() - recoveryStartedAt}",
+                    "RECOVER_ATTEMPT level=soft reason=$reason",
                 )
             }
             RecoveryLevel.HARD -> {
@@ -263,10 +298,10 @@ fun NurseryScreen(streamUrl: String, modifier: Modifier = Modifier) {
                 val newPlayer = createNurseryPlayer(context, streamHealth, recoveryHolder)
                 exoPlayer = newPlayer
                 playerGeneration++
-                loadStream(newPlayer, streamUrlState.value)
+                loadStream(newPlayer, streamUrlState.value, streamHealth)
                 Log.i(
                     TAG,
-                    "RECOVER_OK level=hard reason=$reason afterMs=${System.currentTimeMillis() - recoveryStartedAt}",
+                    "RECOVER_ATTEMPT level=hard reason=$reason",
                 )
             }
         }
@@ -285,15 +320,17 @@ fun NurseryScreen(streamUrl: String, modifier: Modifier = Modifier) {
     }
 
     DisposableEffect(exoPlayer) {
+        val playerToRelease = exoPlayer
+        val generation = playerGeneration
         onDispose {
-            Log.d(TAG, "Releasing ExoPlayer generation=$playerGeneration")
-            exoPlayer.release()
+            Log.d(TAG, "Releasing ExoPlayer generation=$generation")
+            playerToRelease.release()
         }
     }
 
     LaunchedEffect(streamUrl) {
         streamHealth.resetTracking()
-        loadStream(exoPlayer, streamUrl)
+        loadStream(exoPlayer, streamUrl, streamHealth)
     }
 
     LaunchedEffect(lifecycleOwner) {
@@ -319,7 +356,7 @@ fun NurseryScreen(streamUrl: String, modifier: Modifier = Modifier) {
                     coroutineScope.launch {
                         delay(100)
                         streamHealth.resetTracking()
-                        loadStream(player, streamUrlState.value)
+                        loadStream(player, streamUrlState.value, streamHealth)
                     }
                 }
                 Lifecycle.Event.ON_PAUSE -> {

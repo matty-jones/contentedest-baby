@@ -1,5 +1,17 @@
 # Contentedest Baby — Progress
 
+## 2026-09-06 — Nursery: first-frame timeout after hung reconnect
+
+**Hole:** July frame-watchdog detected a working stream that then froze (`frame_stale`), but `resetTracking()` cleared `hasRenderedFirstFrame` before every recovery. `evaluateStreamHealth()` then returned `null` forever if the reconnect never rendered a first frame (router reboot / network still down). Failure #2 never fired; tab-switch created a fresh player after the network was back.
+
+**Change:** Same architecture in `NurseryScreen.kt`, three fixes:
+- `FIRST_FRAME_TIMEOUT_MS` (10s): hung reconnects report `first_frame_timeout` so soft reload can escalate to hard recreate and keep retrying on the 15s cooldown.
+- `loadStartedAtMs` stamped in `resetTracking()` and `loadStream()`.
+- Snapshot `exoPlayer` in `DisposableEffect` before `release()` so hard recovery cannot dispose the replacement player.
+- `RECOVER_ATTEMPT` after `loadStream()`; `RECOVER_OK` only when a post-recovery frame actually arrives.
+
+**Test (harsher than July):** Leave Nursery visible. Stop RTSP source ~60s, start it, do not touch the tablet. Pass only if video returns by itself. Logcat: `HEALTH_FAIL reason=frame_stale` -> `RECOVER_ATTEMPT level=soft` -> `HEALTH_FAIL reason=first_frame_timeout` -> `RECOVER_ATTEMPT level=hard` -> `RECOVER_OK`.
+
 ## Latest: Words Counter Improvements (2026-07-25)
 
 Implemented fuzzy search, DOB-based vocabulary percentile curves, Growth DOB anchoring, and MacArthur-Bates Short Form Level I (MA-B) Understood/Said metadata.
